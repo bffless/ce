@@ -2,7 +2,7 @@
 // served key. Chainable mock: queue a result per query with db.__queue(rows).
 jest.mock('../../db/client', () => {
   const queued: unknown[] = [];
-  const methods = ['select', 'from', 'where', 'limit'];
+  const methods = ['select', 'from', 'where', 'orderBy', 'limit'];
   const chainable: Record<string, unknown> = {};
   for (const method of methods) {
     chainable[method] = jest.fn(() => chainable);
@@ -741,6 +741,35 @@ describe('FileServeHandler — download (Content-Disposition: attachment)', () =
       );
       expect(dispositionOf(res)).toBeUndefined();
     }
+  });
+
+  it('works in explicit `key` mode: the lookup uses the resolved key, not the request path', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 5, etag: 'e' }),
+      getMetadata: jest.fn(),
+    };
+    const res = makeRes();
+    mockDb.__queue([{ originalPath: 'Site asset.css' }]);
+    const keyStep = {
+      id: 'serve',
+      name: 'serve',
+      handlerType: 'file_serve_handler',
+      config: { key: '{{steps.resolve.serveKey}}', download: 'request.query.download' },
+    } as unknown as PipelineStep;
+
+    await buildHandler(storage).execute(
+      buildContext(res, {
+        path: '/api/sites/site-123/styles.css',
+        query: { download: '1' },
+        steps: { resolve: { serveKey: 'content/abc-styles.css' } },
+      }),
+      keyStep,
+    );
+
+    expect(storage.downloadStream).toHaveBeenCalledWith('o/r/uploads/content/abc-styles.css');
+    expect(dispositionOf(res)).toBe('attachment; filename="Site asset.css"');
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/css; charset=utf-8');
   });
 
   it('sets the header on the buffered (non-streaming) path too', async () => {

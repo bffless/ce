@@ -15,7 +15,7 @@ import {
 import { db } from '../../db/client';
 import { projects, assets } from '../../db/schema';
 import { AssetType } from '../../types/asset-type.enum';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import crypto from 'crypto';
 
 /**
@@ -272,7 +272,8 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
    * DB hiccup must not turn a download into a 500 — it just falls back to
    * the basename. Both go through the shared sanitiser, so quotes, CR/LF and
    * path separators can never reach the header, and non-ASCII names get the
-   * RFC 6266 dual form.
+   * RFC 6266 dual form. `storage_key` is not unique at the schema level, so
+   * the newest row wins deterministically should a key ever be re-recorded.
    */
   private async buildAttachmentDisposition(
     projectId: string,
@@ -291,6 +292,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
             eq(assets.assetType, AssetType.UPLOADS),
           ),
         )
+        .orderBy(desc(assets.createdAt))
         .limit(1);
       originalName = sanitizeDownloadFilename(asset?.originalPath);
     } catch (err) {
