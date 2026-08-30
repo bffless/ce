@@ -51,6 +51,21 @@ interface CacheEntry {
   expiry: number;
 }
 
+/**
+ * Pipeline error codes that map to a 4xx response (see the status mapping in
+ * handlePipelineExecution): validator outcomes an anonymous caller can trigger
+ * on any public rule. These stay debug-gated for execution-log persistence;
+ * everything else in a failed result is treated as an execution failure and is
+ * always logged (#724). Expressed as an exclusion list so a future unmapped
+ * error code defaults to "persist" (fail-visible), matching its 500 response.
+ */
+const CLIENT_FAULT_ERROR_CODES: ReadonlySet<string> = new Set([
+  'VALIDATION_ERROR', // 400
+  'AUTH_REQUIRED', // 401
+  'AUTHORIZATION_ERROR', // 403
+  'RATE_LIMIT_EXCEEDED', // 429
+]);
+
 @Injectable()
 export class ProxyMiddleware implements NestMiddleware {
   private readonly logger = new Logger(ProxyMiddleware.name);
@@ -1209,10 +1224,17 @@ export class ProxyMiddleware implements NestMiddleware {
       // the response can carry it (X-Pipeline-Log-Id) while the insert below
       // stays fire-and-forget. A caller that gets a failed response can then
       // fetch GET /api/pipeline-logs/:id directly instead of matching by
-      // timestamp. Failed runs are always logged (#724) so production rules
-      // leave a record without debug mode; successful runs stay debug-gated,
-      // so a healthy rule's log volume is unchanged.
-      const shouldPersistLog = rule.debugEnabled || !result.success;
+      // timestamp. Execution failures (the unmapped-to-4xx bucket that answers
+      // 500) are always logged (#724) so production rules leave a record
+      // without debug mode. Successes AND client-fault validator outcomes
+      // (400/401/403/429) stay debug-gated: those are triggerable by anonymous
+      // public traffic on every request, and logging them would add DB write
+      // load exactly under rate-limit/bot pressure and crowd the small
+      // per-rule retention window with 4xx noise. An unmapped error code
+      // defaults to "persist" (fail-visible).
+      const isExecutionFailure =
+        !result.success && !CLIENT_FAULT_ERROR_CODES.has(result.error?.code ?? '');
+      const shouldPersistLog = rule.debugEnabled || isExecutionFailure;
       const logId = shouldPersistLog ? randomUUID() : undefined;
 
       if (result.success && result.response) {
@@ -1254,9 +1276,9 @@ export class ProxyMiddleware implements NestMiddleware {
       }
 
       // Fire-and-forget: persist execution log when debug is enabled or the
-      // run failed. Wait for post-steps to complete so their debug info is
-      // included (with debug off, result.debug is absent and the log service
-      // stores a minimal envelope).
+      // run hit an execution failure. Wait for post-steps to complete so their
+      // debug info is included (with debug off, result.debug is absent and the
+      // log service stores a minimal envelope).
       if (logId) {
         const persistLog = async () => {
           if (result.postStepsPromise) {
@@ -1293,9 +1315,9 @@ export class ProxyMiddleware implements NestMiddleware {
         `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
-      // A thrown error is a failed run: always persist a log row (#724) so the
-      // failure is visible even with debug off, and let the response carry the
-      // row id when it hasn't gone out yet.
+      // A thrown error is an execution failure (answered as 500): always
+      // persist a log row (#724) so the failure is visible even with debug
+      // off, and let the response carry the row id when it hasn't gone out yet.
       const logId = randomUUID();
       if (!res.headersSent) {
         res.setHeader(PIPELINE_LOG_ID_HEADER, logId);

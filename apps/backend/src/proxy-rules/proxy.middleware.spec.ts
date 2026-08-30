@@ -675,8 +675,8 @@ describe('ProxyMiddleware', () => {
       expect(mockExecutionLogService.log).not.toHaveBeenCalled();
     });
 
-    describe('failed runs are always logged, even with debug off (#724)', () => {
-      it('persists exactly one row with the error fields when a pipeline fails with debugEnabled false', async () => {
+    describe('execution failures (500-class) are always logged, even with debug off (#724)', () => {
+      it('persists exactly one row with the error fields when a pipeline hits an execution failure with debugEnabled false', async () => {
         mockPipelineExecutionService.executePipelineWithDebug.mockResolvedValue({
           success: false,
           error: { code: 'STEP_EXECUTION_ERROR', message: 'boom', step: 'register' },
@@ -711,6 +711,28 @@ describe('ProxyMiddleware', () => {
         expect(method).toBe('GET');
         expect(path).toBe('/public/owner/repo/sha123/api/items');
         expect(persistedId).toBe(logId);
+      });
+
+      it('writes no row for a client-fault validator failure with debugEnabled false (4xx stays debug-gated)', async () => {
+        mockPipelineExecutionService.executePipelineWithDebug.mockResolvedValue({
+          success: false,
+          error: { code: 'RATE_LIMIT_EXCEEDED', message: 'too many requests' },
+        } as any);
+        const req = createMockRequest('/public/owner/repo/sha123/api/items');
+        const res = createPipelineResponse();
+
+        await (middleware as any).handlePipelineExecution(
+          req,
+          res,
+          pipelineRule({ debugEnabled: false }),
+          'project-1',
+        );
+        await flushAsync();
+
+        // Rate limiting keeps shedding traffic cheaply: no header, no DB write.
+        expect(logIdHeaderValue(res)).toBeUndefined();
+        expect(res.status).toHaveBeenCalledWith(429);
+        expect(mockExecutionLogService.log).not.toHaveBeenCalled();
       });
 
       it('writes no row for a successful run with debugEnabled false (volume unchanged for healthy rules)', async () => {
