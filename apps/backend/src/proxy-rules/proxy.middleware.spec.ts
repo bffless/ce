@@ -674,5 +674,145 @@ describe('ProxyMiddleware', () => {
       expect(res.send).not.toHaveBeenCalled();
       expect(mockExecutionLogService.log).not.toHaveBeenCalled();
     });
+
+    describe('execution failures (500-class) are always logged, even with debug off (#724)', () => {
+      it('persists exactly one row with the error fields when a pipeline hits an execution failure with debugEnabled false', async () => {
+        mockPipelineExecutionService.executePipelineWithDebug.mockResolvedValue({
+          success: false,
+          error: { code: 'STEP_EXECUTION_ERROR', message: 'boom', step: 'register' },
+        } as any);
+        const req = createMockRequest('/public/owner/repo/sha123/api/items');
+        const res = createPipelineResponse();
+
+        await (middleware as any).handlePipelineExecution(
+          req,
+          res,
+          pipelineRule({ debugEnabled: false }),
+          'project-1',
+        );
+        await flushAsync();
+
+        // The failed answer still carries the row id.
+        const logId = logIdHeaderValue(res);
+        expect(logId).toMatch(UUID_RE);
+        expect(res.status).toHaveBeenCalledWith(500);
+
+        expect(mockExecutionLogService.log).toHaveBeenCalledTimes(1);
+        const [ruleId, projectId, result, , method, path, persistedId] =
+          mockExecutionLogService.log.mock.calls[0];
+        expect(ruleId).toBe('rule-1');
+        expect(projectId).toBe('project-1');
+        expect(result.success).toBe(false);
+        expect(result.error).toEqual({
+          code: 'STEP_EXECUTION_ERROR',
+          message: 'boom',
+          step: 'register',
+        });
+        expect(method).toBe('GET');
+        expect(path).toBe('/public/owner/repo/sha123/api/items');
+        expect(persistedId).toBe(logId);
+      });
+
+      it('writes no row for a client-fault validator failure with debugEnabled false (4xx stays debug-gated)', async () => {
+        mockPipelineExecutionService.executePipelineWithDebug.mockResolvedValue({
+          success: false,
+          error: { code: 'RATE_LIMIT_EXCEEDED', message: 'too many requests' },
+        } as any);
+        const req = createMockRequest('/public/owner/repo/sha123/api/items');
+        const res = createPipelineResponse();
+
+        await (middleware as any).handlePipelineExecution(
+          req,
+          res,
+          pipelineRule({ debugEnabled: false }),
+          'project-1',
+        );
+        await flushAsync();
+
+        // Rate limiting keeps shedding traffic cheaply: no header, no DB write.
+        expect(logIdHeaderValue(res)).toBeUndefined();
+        expect(res.status).toHaveBeenCalledWith(429);
+        expect(mockExecutionLogService.log).not.toHaveBeenCalled();
+      });
+
+      it('writes no row for a successful run with debugEnabled false (volume unchanged for healthy rules)', async () => {
+        const req = createMockRequest('/public/owner/repo/sha123/api/items');
+        const res = createPipelineResponse();
+
+        await (middleware as any).handlePipelineExecution(
+          req,
+          res,
+          pipelineRule({ debugEnabled: false }),
+          'project-1',
+        );
+        await flushAsync();
+
+        expect(logIdHeaderValue(res)).toBeUndefined();
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(mockExecutionLogService.log).not.toHaveBeenCalled();
+      });
+
+      it('logs a thrown execution error under PIPELINE_EXECUTION_ERROR with debug off', async () => {
+        mockPipelineExecutionService.executePipelineWithDebug.mockRejectedValue(
+          new Error('connection reset'),
+        );
+        const req = createMockRequest('/public/owner/repo/sha123/api/items');
+        const res = createPipelineResponse();
+
+        await (middleware as any).handlePipelineExecution(
+          req,
+          res,
+          pipelineRule({ debugEnabled: false }),
+          'project-1',
+        );
+        await flushAsync();
+
+        const logId = logIdHeaderValue(res);
+        expect(logId).toMatch(UUID_RE);
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'Pipeline execution failed',
+          code: 'PIPELINE_EXECUTION_ERROR',
+          message: 'connection reset',
+        });
+
+        expect(mockExecutionLogService.log).toHaveBeenCalledTimes(1);
+        const [ruleId, projectId, result, , , , persistedId] =
+          mockExecutionLogService.log.mock.calls[0];
+        expect(ruleId).toBe('rule-1');
+        expect(projectId).toBe('project-1');
+        expect(result).toEqual({
+          success: false,
+          error: { code: 'PIPELINE_EXECUTION_ERROR', message: 'connection reset' },
+        });
+        expect(persistedId).toBe(logId);
+      });
+
+      it('still logs a thrown error when the response already streamed (no header, one row)', async () => {
+        const req = createMockRequest('/public/owner/repo/sha123/api/stream');
+        const res = createPipelineResponse();
+        mockPipelineExecutionService.executePipelineWithDebug.mockImplementation(async () => {
+          res.headersSent = true;
+          throw new Error('stream died');
+        });
+
+        await (middleware as any).handlePipelineExecution(
+          req,
+          res,
+          pipelineRule({ debugEnabled: false }),
+          'project-1',
+        );
+        await flushAsync();
+
+        expect(logIdHeaderValue(res)).toBeUndefined();
+        expect(res.json).not.toHaveBeenCalled();
+        expect(mockExecutionLogService.log).toHaveBeenCalledTimes(1);
+        const [, , result] = mockExecutionLogService.log.mock.calls[0];
+        expect(result.error).toEqual({
+          code: 'PIPELINE_EXECUTION_ERROR',
+          message: 'stream died',
+        });
+      });
+    });
   });
 });

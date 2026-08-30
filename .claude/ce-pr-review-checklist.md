@@ -140,6 +140,20 @@ detail and error text; a cross-project read is a data leak with no error anywher
 **Learned from:** PR #717, 2026-08-29 — `X-Pipeline-Log-Id` exposed log ids to
 anonymous callers while `GET /api/pipeline-logs/:logId` was unscoped; fixed in the same PR.
 
+### Pipeline execution logging is on the public request hot path
+**Surface:** `apps/backend/src/proxy-rules/proxy.middleware.ts` (handlePipelineExecution),
+`apps/backend/src/pipelines/pipeline-execution-log.service.ts`
+**Check:** When persistence conditions change (e.g. "always log on X"), does the
+condition key off actual execution/infra failure, or off `!result.success` broadly?
+`result.success` is also false for ordinary validator outcomes (VALIDATION_ERROR,
+AUTH_REQUIRED, AUTHORIZATION_ERROR, RATE_LIMIT_EXCEEDED) reachable by anonymous public
+traffic on every request.
+**Why:** Widening what gets logged widens it for routine client-side rejections too,
+adding DB write load (insert + per-rule retention cleanup) precisely under bot/scanner
+traffic or rate-limit pressure, and can crowd the small per-rule retention window
+(50 rows) with 4xx noise instead of the 5xx rows operators actually need.
+**Learned from:** PR #725, 2026-08-30.
+
 ---
 
 ## Entry template
