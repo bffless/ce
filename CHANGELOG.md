@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.42](https://github.com/bffless/ce/compare/v0.4.41...v0.4.42) (2026-08-30)
+
+
+### Fixed
+
+* **pipelines:** always persist an execution log for failed runs ([#725](https://github.com/bffless/ce/issues/725)) ([2bdebb2](https://github.com/bffless/ce/commit/2bdebb25882960f8660f6e545b73b4f9a4db7fbd))
+
 ## [0.4.41](https://github.com/bffless/ce/compare/v0.4.40...v0.4.41) (2026-08-29)
 
 ### Added
