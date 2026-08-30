@@ -7,8 +7,9 @@ import type { PipelineLogRequestMeta } from '../db/schema/pipeline-execution-log
 
 /**
  * Response header carrying the `pipeline_execution_logs.id` of the row a
- * pipeline proxy-rule response was logged under. Only present when the rule has
- * `debugEnabled`; the value resolves at `GET /api/pipeline-logs/:logId`.
+ * pipeline proxy-rule response was logged under. Present when the rule has
+ * `debugEnabled`, and on every failed run regardless of debug mode (#724);
+ * the value resolves at `GET /api/pipeline-logs/:logId`.
  */
 export const PIPELINE_LOG_ID_HEADER = 'X-Pipeline-Log-Id';
 

@@ -25,7 +25,10 @@ import {
   PipelineExecutionLogService,
   PIPELINE_LOG_ID_HEADER,
 } from '../pipelines/pipeline-execution-log.service';
-import { PipelineUser } from '../pipelines/execution/pipeline-context.interface';
+import {
+  PipelineUser,
+  PipelineDebugResult,
+} from '../pipelines/execution/pipeline-context.interface';
 import { Pipeline, PipelineStep } from '../pipelines/types';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
@@ -1155,6 +1158,9 @@ export class ProxyMiddleware implements NestMiddleware {
       })),
     };
 
+    // Hoisted so the outer catch can attribute its failure log to the caller.
+    let user: { id: string; email?: string; role?: string } | undefined;
+
     try {
       // If pipeline has file_upload_handler, parse multipart before executing
       const uploadStep = pipelineConfig.steps.find((s) => s.handlerType === 'file_upload_handler');
@@ -1167,7 +1173,7 @@ export class ProxyMiddleware implements NestMiddleware {
       }
 
       // Extract user from session if available (optional - don't fail if not authenticated)
-      const user = await this.getOptionalUser(req, res);
+      user = await this.getOptionalUser(req, res);
 
       // Enrich with group memberships for the sandboxed pipeline context. Group
       // lookup must never take the request down: on failure, degrade to "no groups".
@@ -1199,11 +1205,15 @@ export class ProxyMiddleware implements NestMiddleware {
         return;
       }
 
-      // When this rule persists execution logs, choose the row id up front so the
-      // response can carry it (X-Pipeline-Log-Id) while the insert below stays
-      // fire-and-forget. A caller that gets a failed response can then fetch
-      // GET /api/pipeline-logs/:id directly instead of matching by timestamp.
-      const logId = rule.debugEnabled ? randomUUID() : undefined;
+      // When this run persists an execution log, choose the row id up front so
+      // the response can carry it (X-Pipeline-Log-Id) while the insert below
+      // stays fire-and-forget. A caller that gets a failed response can then
+      // fetch GET /api/pipeline-logs/:id directly instead of matching by
+      // timestamp. Failed runs are always logged (#724) so production rules
+      // leave a record without debug mode; successful runs stay debug-gated,
+      // so a healthy rule's log volume is unchanged.
+      const shouldPersistLog = rule.debugEnabled || !result.success;
+      const logId = shouldPersistLog ? randomUUID() : undefined;
 
       if (result.success && result.response) {
         // Set response headers if provided
@@ -1243,9 +1253,11 @@ export class ProxyMiddleware implements NestMiddleware {
         });
       }
 
-      // Fire-and-forget: persist execution log if debug is enabled
-      // Wait for post-steps to complete so their debug info is included
-      if (rule.debugEnabled && logId) {
+      // Fire-and-forget: persist execution log when debug is enabled or the
+      // run failed. Wait for post-steps to complete so their debug info is
+      // included (with debug off, result.debug is absent and the log service
+      // stores a minimal envelope).
+      if (logId) {
         const persistLog = async () => {
           if (result.postStepsPromise) {
             try {
@@ -1276,17 +1288,42 @@ export class ProxyMiddleware implements NestMiddleware {
         );
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(
         `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
+      // A thrown error is a failed run: always persist a log row (#724) so the
+      // failure is visible even with debug off, and let the response carry the
+      // row id when it hasn't gone out yet.
+      const logId = randomUUID();
       if (!res.headersSent) {
+        res.setHeader(PIPELINE_LOG_ID_HEADER, logId);
         res.status(500).json({
           error: 'Pipeline execution failed',
           code: 'PIPELINE_EXECUTION_ERROR',
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message,
         });
       }
+      const failedResult: PipelineDebugResult = {
+        success: false,
+        error: { code: 'PIPELINE_EXECUTION_ERROR', message },
+      };
+      this.executionLogService
+        .log(
+          rule.id,
+          projectId,
+          failedResult,
+          {
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            userId: user?.id,
+          },
+          req.method,
+          req.path,
+          logId,
+        )
+        .catch((err) => this.logger.error('Failed to persist pipeline execution log', err));
     }
   }
 
