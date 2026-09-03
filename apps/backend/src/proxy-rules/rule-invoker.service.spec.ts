@@ -3,6 +3,7 @@ import {
   buildTargetUrl,
   publicPrefixOf,
   MAX_INVOKE_DEPTH,
+  structuredBody,
 } from './rule-invoker.service';
 import { Request } from 'express';
 
@@ -288,6 +289,28 @@ describe('RuleInvokerService', () => {
     ]);
     expect(await service.invoke(base)).toEqual({ ok: false, failure: { kind: 'recursion' } });
     expect(execution.executePipelineWithDebug).not.toHaveBeenCalled();
+  });
+
+  it("parses a pipeline sibling's JSON answer the response handler passed through as a string (large bodies, #418)", async () => {
+    const { service, execution } = make([rule()]);
+    const big = JSON.stringify({
+      content: [{ type: 'text', text: 'x'.repeat(300 * 1024) }],
+      structuredContent: { html: '<div>' },
+    });
+    execution.executePipelineWithDebug.mockResolvedValueOnce({
+      success: true,
+      response: { status: 200, body: big, headers: { 'Content-Type': 'application/json' } },
+    });
+    const result = await service.invoke(base);
+    expect(result.ok).toBe(true);
+    const body = (
+      result as { answer: { body: { content: unknown[]; structuredContent: unknown } } }
+    ).answer.body;
+    expect(Array.isArray(body.content)).toBe(true);
+    expect(body.structuredContent).toEqual({ html: '<div>' });
+    // not JSON, or not a JSON content type: the string stays a string
+    expect(structuredBody('<html>', 'text/html')).toBe('<html>');
+    expect(structuredBody('{not json', 'application/json')).toBe('{not json');
   });
 
   it("caches the alias's rules for a short window", async () => {

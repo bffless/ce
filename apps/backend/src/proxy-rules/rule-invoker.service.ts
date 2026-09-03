@@ -150,13 +150,14 @@ export class RuleInvokerService {
 
     if (result.success && result.response) {
       const headers = { ...(result.response.headers ?? {}) };
+      const contentType = headers['Content-Type'] ?? headers['content-type'] ?? 'application/json';
       return {
         ok: true,
         answer: {
           status: result.response.status,
-          body: result.response.body,
+          body: structuredBody(result.response.body, contentType),
           headers,
-          contentType: headers['Content-Type'] ?? headers['content-type'] ?? 'application/json',
+          contentType,
         },
       };
     }
@@ -337,4 +338,21 @@ function stripMatchedPrefix(pattern: string, path: string): string {
     return '';
   }
   return path;
+}
+
+/**
+ * A sibling's JSON answer as a value. The response handler sends a rendered
+ * JSON body of 256 KiB or more verbatim as a string rather than materialising
+ * it (#418, a heap concern on the way out to Express) — in-process there is no
+ * Express, and a caller such as the MCP handler reads the body's shape
+ * (`content[]`), so the string is parsed here; anything that is not JSON stays
+ * a string.
+ */
+export function structuredBody(body: unknown, contentType: string): unknown {
+  if (typeof body !== 'string' || !contentType.toLowerCase().includes('json')) return body;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
 }
