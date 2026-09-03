@@ -887,8 +887,13 @@ ${spaFallback}
     config: string,
   ): Promise<{ tempPath: string; finalPath: string }> {
     const filename = `domain-${domainMappingId}.conf`;
-    const tempPath = join('/tmp', filename);
     const finalPath = join(this.getNginxSitesPath(), filename);
+    // The temp file lives beside its target so the move into place is an
+    // atomic rename on the same filesystem (nginx and its watcher never see a
+    // half-written file). The dot prefix keeps it out of nginx's
+    // `include sites-enabled/*.conf` and out of the watcher's reload until it
+    // is renamed — inotify reports that rename as moved_to.
+    const tempPath = join(this.getNginxSitesPath(), `.${filename}.tmp`);
 
     // Write to temp file
     await writeFile(tempPath, config, 'utf-8');

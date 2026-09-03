@@ -837,13 +837,16 @@ server {
       const config = 'server { listen 80; }';
       const result = await service.writeConfigFile('domain-1', config);
 
+      // The temp file sits beside its target (dot-prefixed, outside nginx's
+      // `*.conf` include) so the move into place is an atomic rename.
       expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('/tmp/domain-domain-1.conf'),
+        expect.stringContaining('/.domain-domain-1.conf.tmp'),
         config,
         'utf-8',
       );
-      expect(result.tempPath).toContain('/tmp/domain-domain-1.conf');
-      expect(result.finalPath).toContain('domain-domain-1.conf');
+      expect(result.tempPath).toContain('/.domain-domain-1.conf.tmp');
+      expect(result.tempPath.replace(/[^/]*$/, '')).toBe(result.finalPath.replace(/[^/]*$/, ''));
+      expect(result.finalPath).toMatch(/\/domain-domain-1\.conf$/);
     });
   });
 

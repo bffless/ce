@@ -5,6 +5,7 @@ import * as fs from 'fs/promises';
 // Mock fs/promises
 jest.mock('fs/promises', () => ({
   copyFile: jest.fn(),
+  rename: jest.fn(),
   unlink: jest.fn(),
   access: jest.fn(),
 }));
@@ -12,6 +13,7 @@ jest.mock('fs/promises', () => ({
 describe('NginxReloadService', () => {
   let service: NginxReloadService;
   let mockCopyFile: jest.MockedFunction<typeof fs.copyFile>;
+  let mockRename: jest.MockedFunction<typeof fs.rename>;
   let mockUnlink: jest.MockedFunction<typeof fs.unlink>;
   let mockAccess: jest.MockedFunction<typeof fs.access>;
 
@@ -20,11 +22,13 @@ describe('NginxReloadService', () => {
     process.env.NGINX_RELOAD_WAIT_MS = '100'; // Reduce wait time for tests
 
     mockCopyFile = fs.copyFile as jest.MockedFunction<typeof fs.copyFile>;
+    mockRename = fs.rename as jest.MockedFunction<typeof fs.rename>;
     mockUnlink = fs.unlink as jest.MockedFunction<typeof fs.unlink>;
     mockAccess = fs.access as jest.MockedFunction<typeof fs.access>;
 
     // Default mock implementations
     mockCopyFile.mockResolvedValue(undefined);
+    mockRename.mockResolvedValue(undefined);
     mockUnlink.mockResolvedValue(undefined);
     mockAccess.mockResolvedValue(undefined);
 
@@ -45,23 +49,35 @@ describe('NginxReloadService', () => {
   });
 
   describe('validateAndReload', () => {
-    it('should copy config file, delete temp, and return success', async () => {
+    it('renames the temp file into place (atomic on one filesystem) and returns success', async () => {
+      const tempPath = '/etc/nginx/sites-enabled/.domain-1.conf.tmp';
+      const finalPath = '/etc/nginx/sites-enabled/domain-1.conf';
+
+      const result = await service.validateAndReload(tempPath, finalPath);
+
+      expect(mockRename).toHaveBeenCalledWith(tempPath, finalPath);
+      expect(mockCopyFile).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('falls back to copy + unlink when the temp file is on another filesystem (EXDEV)', async () => {
       const tempPath = '/tmp/domain-1.conf';
       const finalPath = '/etc/nginx/sites-enabled/domain-1.conf';
+      mockRename.mockRejectedValueOnce(Object.assign(new Error('cross-device'), { code: 'EXDEV' }));
 
       const result = await service.validateAndReload(tempPath, finalPath);
 
       expect(mockCopyFile).toHaveBeenCalledWith(tempPath, finalPath);
       expect(mockUnlink).toHaveBeenCalledWith(tempPath);
       expect(result.success).toBe(true);
-      expect(result.error).toBeUndefined();
     });
 
-    it('should return failure on copyFile error', async () => {
+    it('should return failure on a write error', async () => {
       const tempPath = '/tmp/domain-1.conf';
       const finalPath = '/etc/nginx/sites-enabled/domain-1.conf';
 
-      mockCopyFile.mockRejectedValue(new Error('Permission denied'));
+      mockRename.mockRejectedValue(new Error('Permission denied'));
 
       const result = await service.validateAndReload(tempPath, finalPath);
 
@@ -84,16 +100,15 @@ describe('NginxReloadService', () => {
   });
 
   describe('writeConfigOnly', () => {
-    it('copies the temp file to final, deletes temp, and does NOT wait for nginx', async () => {
-      const tempPath = '/tmp/domain-bulk.conf';
+    it('renames the temp file into place and does NOT wait for nginx', async () => {
+      const tempPath = '/etc/nginx/sites-enabled/.domain-bulk.conf.tmp';
       const finalPath = '/etc/nginx/sites-enabled/domain-bulk.conf';
 
       const startTime = Date.now();
       const result = await service.writeConfigOnly(tempPath, finalPath);
       const elapsed = Date.now() - startTime;
 
-      expect(mockCopyFile).toHaveBeenCalledWith(tempPath, finalPath);
-      expect(mockUnlink).toHaveBeenCalledWith(tempPath);
+      expect(mockRename).toHaveBeenCalledWith(tempPath, finalPath);
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
       // Must return well before NGINX_RELOAD_WAIT_MS (100ms in test) — otherwise
@@ -101,14 +116,14 @@ describe('NginxReloadService', () => {
       expect(elapsed).toBeLessThan(50);
     });
 
-    it('returns failure on copyFile error without throwing', async () => {
-      mockCopyFile.mockRejectedValueOnce(new Error('disk full'));
+    it('returns failure on a write error without throwing', async () => {
+      mockRename.mockRejectedValueOnce(new Error('disk full'));
 
-      const result = await service.writeConfigOnly('/tmp/x.conf', '/etc/nginx/x.conf');
+      const result = await service.writeConfigOnly('/etc/nginx/.x.conf.tmp', '/etc/nginx/x.conf');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('disk full');
-      // Temp file should NOT be unlinked when copy failed (would mask the original error)
+      // Temp file should NOT be unlinked when the move failed (would mask the original error)
       expect(mockUnlink).not.toHaveBeenCalled();
     });
   });

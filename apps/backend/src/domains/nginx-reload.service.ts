@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { copyFile, unlink, access } from 'fs/promises';
+import { copyFile, rename, unlink, access } from 'fs/promises';
 
 @Injectable()
 export class NginxReloadService {
@@ -19,10 +19,8 @@ export class NginxReloadService {
     finalConfigPath: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Copy config to final location (can't use rename across filesystems in Docker)
-      this.logger.log(`Copying config to: ${finalConfigPath}`);
-      await copyFile(tempConfigPath, finalConfigPath);
-      await unlink(tempConfigPath);
+      this.logger.log(`Moving config into place: ${finalConfigPath}`);
+      await this.moveIntoPlace(tempConfigPath, finalConfigPath);
 
       // File watcher will detect change and reload automatically
       this.logger.log('Config written, nginx watcher will reload automatically (2-5s)');
@@ -92,8 +90,7 @@ export class NginxReloadService {
     finalConfigPath: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      await copyFile(tempConfigPath, finalConfigPath);
-      await unlink(tempConfigPath);
+      await this.moveIntoPlace(tempConfigPath, finalConfigPath);
       return { success: true };
     } catch (error) {
       this.logger.error('Failed to write config', error);
@@ -101,6 +98,22 @@ export class NginxReloadService {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
+    }
+  }
+
+  /**
+   * Put a rendered config into place atomically: a rename when the temp file
+   * is on the same filesystem (NginxConfigService writes it beside its target,
+   * so this is the normal case — nginx never sees a half-written file), with a
+   * copy-and-unlink fallback for a temp path on another filesystem.
+   */
+  private async moveIntoPlace(tempConfigPath: string, finalConfigPath: string): Promise<void> {
+    try {
+      await rename(tempConfigPath, finalConfigPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+      await copyFile(tempConfigPath, finalConfigPath);
+      await unlink(tempConfigPath);
     }
   }
 

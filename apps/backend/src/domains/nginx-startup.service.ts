@@ -163,8 +163,11 @@ export class NginxStartupService implements OnModuleInit {
     // so what gets rendered here is never a half-loaded state (#607).
     await this.edgeBlocklistService.sync();
 
-    // 0. Clean up orphaned config files (from previous installs or deleted mappings)
-    await this.cleanupOrphanedConfigs();
+    // Every config is regenerated IN PLACE below (rename-into-place, so a
+    // live site never has a moment without its server block); orphans — files
+    // whose mapping or redirect no longer exists — are pruned afterwards.
+    // Deleting everything first used to open a window in which nginx, coming
+    // up alongside the backend, loaded a partial set of server blocks.
 
     // 0.5. Clean up stale primary domain mapping if PRIMARY_DOMAIN changed
     await this.cleanupStalePrimaryDomainMapping();
@@ -178,7 +181,10 @@ export class NginxStartupService implements OnModuleInit {
     // 3. Regenerate primary content config (write only)
     const primaryCount = await this.regeneratePrimaryContentConfig();
 
-    // 4. Single wait for the nginx watcher to debounce + reload all the writes.
+    // 4. Remove configs whose row is gone (previous installs, deleted mappings).
+    await this.pruneOrphanNginxConfigs();
+
+    // 5. Single wait for the nginx watcher to coalesce + reload all the writes.
     if (domainCount + redirectCount + primaryCount > 0) {
       await this.nginxReloadService.waitForReload();
     }
@@ -187,65 +193,16 @@ export class NginxStartupService implements OnModuleInit {
   }
 
   /**
-   * Cleans up ALL domain and redirect nginx config files before regenerating.
-   *
-   * Why delete ALL configs instead of just orphaned ones?
-   * - Nginx starts before backend finishes startup
-   * - If a stale config has errors (e.g., SSL certs that don't exist), nginx crashes
-   * - By the time backend cleans up orphaned configs, nginx is already in CrashLoopBackOff
-   * - Deleting ALL configs and regenerating ensures a clean slate with current code/templates
-   *
-   * This also handles:
-   * - App reinstalled but nginx volume persists
-   * - Domain mappings deleted but config files weren't removed
-   * - Template changes that need to be applied to all configs
-   */
-  private async cleanupOrphanedConfigs(): Promise<void> {
-    const sitesPath = this.nginxConfigService.getNginxSitesPath();
-
-    try {
-      const { readdir, unlink } = await import('fs/promises');
-      const { join } = await import('path');
-
-      const files = await readdir(sitesPath);
-
-      let cleanedCount = 0;
-
-      for (const file of files) {
-        // Delete ALL domain-*.conf files (will be regenerated from DB)
-        if (file.match(/^domain-[a-f0-9-]+\.conf$/)) {
-          this.logger.debug(`Removing domain config for regeneration: ${file}`);
-          await unlink(join(sitesPath, file));
-          cleanedCount++;
-          continue;
-        }
-
-        // Delete ALL redirect-*.conf files (will be regenerated from DB)
-        if (file.match(/^redirect-[a-f0-9-]+\.conf$/)) {
-          this.logger.debug(`Removing redirect config for regeneration: ${file}`);
-          await unlink(join(sitesPath, file));
-          cleanedCount++;
-        }
-      }
-
-      if (cleanedCount > 0) {
-        this.logger.log(`Cleared ${cleanedCount} nginx config file(s) for regeneration`);
-      }
-    } catch (error) {
-      this.logger.warn(`Failed to cleanup configs: ${error}`);
-    }
-  }
-
-  /**
    * Runtime sweep that prunes orphan nginx config files — files on disk
    * whose UUID has no corresponding row in `domain_mappings` / `domain_redirects`.
    *
-   * Different from `cleanupOrphanedConfigs` (startup): that one nukes every
-   * domain-*.conf because regeneration immediately rewrites them. At runtime
-   * that would 404 every live site for 2-5s, so this sweep is *selective* —
-   * it only removes truly orphaned files. Safe to run on a live cluster.
+   * Selective on purpose — it only removes truly orphaned files, so it is safe
+   * on a live cluster and is what startup runs after regenerating every
+   * config in place (the old startup path deleted every domain-*.conf first,
+   * which could leave nginx on a partial set of server blocks).
    *
    * Triggered by:
+   * - Startup, after regeneration
    * - Hourly cron (defense-in-depth against any future leak)
    * - Manual call from project/domain delete paths once they exist
    */
