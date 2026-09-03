@@ -80,6 +80,21 @@ change that edits generation without touching them as suspicious.
 orphans them — the data isn't lost, it's just unreachable, which is worse because it
 looks fine until someone requests an old file.
 
+### New `projectId`/`userId` foreign keys must cascade or join the manual delete-cleanup lists
+**Surface:** `apps/backend/src/db/schema/*.schema.ts` (any new `.references(() => projects.id)` /
+`.references(() => users.id)`), `apps/backend/src/projects/projects.service.ts` (`deleteProject`),
+`apps/backend/src/users/users.service.ts` (`delete`)
+**Check:** Does a new table's `projectId`/`userId` column set `onDelete: 'cascade'`/`'set null'`,
+or (if left at Drizzle's `NO ACTION` default) is it added to the explicit cleanup list in
+`deleteProject()`/`UsersService.delete()`? `deleteProject()`'s own comment enumerates every
+projectId-referencing table it knows about — a new table absent from both is a silent trap.
+**Why:** Without either, deleting a project or user that has any row in the new table throws a
+Postgres FK violation mid-delete, and because those deletes are not in a transaction the earlier
+steps (aliases and assets already removed) are not rolled back — a corrupted, half-deleted project.
+A schema spec pinning `getTableConfig(table).foreignKeys[].onDelete` keeps it from regressing.
+**Learned from:** PR #730 — `app_tokens.project_id` (NOT NULL, no `onDelete`) was not in
+`deleteProject()`'s cleanup; deleting a project with any (even revoked) app token would have failed.
+
 ### Installed apps carry user customization
 **Surface:** `apps/backend/src/app-catalog/`
 **Check:** Does an app update overwrite state the user is allowed to customize?

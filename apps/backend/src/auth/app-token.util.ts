@@ -66,6 +66,8 @@ export function mintToken(): { raw: string; hash: string; prefix: string } {
 }
 
 const lastUsedWrites = new Map<string, number>();
+/** Bound the throttle map: past this many distinct tokens the oldest entries are dropped (a dropped entry only costs one extra write). */
+export const LAST_USED_MAP_MAX = 1000;
 
 /** Test seam. */
 export function resetLastUsedThrottle(): void {
@@ -117,6 +119,10 @@ async function touchLastUsed(tokenId: string): Promise<void> {
   const last = lastUsedWrites.get(tokenId);
   if (last !== undefined && now - last < LAST_USED_WRITE_INTERVAL_MS) return;
   lastUsedWrites.set(tokenId, now);
+  if (lastUsedWrites.size > LAST_USED_MAP_MAX) {
+    const oldest = lastUsedWrites.keys().next().value as string;
+    lastUsedWrites.delete(oldest);
+  }
   try {
     await db
       .update(appTokens)
