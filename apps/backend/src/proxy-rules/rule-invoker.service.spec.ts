@@ -194,41 +194,100 @@ describe('RuleInvokerService', () => {
     });
   });
 
-  it("fetches an external_proxy sibling in-process with the caller's cookie and authorization", async () => {
-    const { service } = make([
+  describe("external_proxy siblings honour the rule's own header controls (ProxyService parity)", () => {
+    const mockFetch = () =>
+      jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => '{"data":[]}',
+      } as unknown as Response);
+    const external = (over: Record<string, unknown> = {}) =>
       rule({
         proxyType: 'external_proxy',
         targetUrl: 'http://localhost:3000/api/aliases',
         pathPattern: '/api/app/aliases',
         stripPrefix: true,
+        ...over,
+      });
+    const call = (service: RuleInvokerService) =>
+      service.invoke({
+        ...base,
+        path: '/api/app/aliases',
+        method: 'GET',
+        body: undefined,
+        query: { repository: 'o/r' },
+      });
+    const sent = (spy: jest.SpyInstance) =>
+      (spy.mock.calls[0] as [URL, RequestInit & { headers: Record<string, string> }])[1].headers;
+
+    it('at the defaults (forwardCookies false, no authTransform) neither cookie nor authorization leaves', async () => {
+      const { service } = make([external()]);
+      const fetchSpy = mockFetch();
+      const result = await call(service);
+      expect(result).toEqual({
+        ok: true,
+        answer: { status: 200, body: { data: [] }, headers: {}, contentType: 'application/json' },
+      });
+      const [url] = fetchSpy.mock.calls[0] as [URL];
+      expect(url.toString()).toBe('http://localhost:3000/api/aliases?repository=o%2Fr');
+      const headers = sent(fetchSpy);
+      expect(headers.cookie).toBeUndefined();
+      expect(headers.authorization).toBeUndefined();
+      expect(headers['content-type']).toBeUndefined();
+      expect(headers['x-forwarded-host']).toBe('h.example');
+      expect(headers['x-original-uri']).toBe('/api/app/aliases');
+      expect(headers['user-agent']).toBe('ua');
+      fetchSpy.mockRestore();
+    });
+
+    it('forwardCookies: true sends the cookie and still strips authorization', async () => {
+      const { service } = make([external({ forwardCookies: true })]);
+      const fetchSpy = mockFetch();
+      await call(service);
+      const headers = sent(fetchSpy);
+      expect(headers.cookie).toBe('sAccessToken=abc');
+      expect(headers.authorization).toBeUndefined();
+      fetchSpy.mockRestore();
+    });
+
+    it("headerConfig.forward/strip are the rule's to set — authorization goes only when listed", async () => {
+      const { service } = make([
+        external({ headerConfig: { forward: ['authorization', 'accept'], strip: ['host'] } }),
+      ]);
+      const fetchSpy = mockFetch();
+      await call(service);
+      const headers = sent(fetchSpy);
+      expect(headers.authorization).toBe('Bearer bfat_x');
+      expect(headers.cookie).toBeUndefined();
+      fetchSpy.mockRestore();
+    });
+
+    it('authTransform cookie-to-bearer turns the named cookie into the bearer, as the edge does', async () => {
+      const { service } = make([
+        external({ authTransform: { type: 'cookie-to-bearer', cookieName: 'sAccessToken' } }),
+      ]);
+      const fetchSpy = mockFetch();
+      await call(service);
+      const headers = sent(fetchSpy);
+      expect(headers.authorization).toBe('Bearer abc');
+      expect(headers.cookie).toBeUndefined();
+      fetchSpy.mockRestore();
+    });
+  });
+
+  it('refuses a sibling whose mcp_handler hides in postSteps', async () => {
+    const { service, execution } = make([
+      rule({
+        pipelineConfig: {
+          name: 'p',
+          steps: [{ name: 'respond', handlerType: 'response_handler', config: { body: '{}' } }],
+          postSteps: [{ name: 'again', handlerType: 'mcp_handler', config: {} }],
+          validators: [],
+        },
       }),
     ]);
-    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
-      status: 200,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      text: async () => '{"data":[]}',
-    } as unknown as Response);
-    const result = await service.invoke({
-      ...base,
-      path: '/api/app/aliases',
-      method: 'GET',
-      body: undefined,
-      query: { repository: 'o/r' },
-    });
-    expect(result).toEqual({
-      ok: true,
-      answer: { status: 200, body: { data: [] }, headers: {}, contentType: 'application/json' },
-    });
-    const [url, init] = fetchSpy.mock.calls[0] as [
-      URL,
-      RequestInit & { headers: Record<string, string> },
-    ];
-    expect(url.toString()).toBe('http://localhost:3000/api/aliases?repository=o%2Fr');
-    expect(init.headers.cookie).toBe('sAccessToken=abc');
-    expect(init.headers.authorization).toBe('Bearer bfat_x');
-    expect(init.headers['x-forwarded-host']).toBe('h.example');
-    expect(init.headers['x-original-uri']).toBe('/api/app/aliases');
-    fetchSpy.mockRestore();
+    expect(await service.invoke(base)).toEqual({ ok: false, failure: { kind: 'recursion' } });
+    expect(execution.executePipelineWithDebug).not.toHaveBeenCalled();
   });
 
   it("caches the alias's rules for a short window", async () => {

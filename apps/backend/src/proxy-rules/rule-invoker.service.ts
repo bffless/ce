@@ -13,6 +13,7 @@ import {
   statusForPipelineError,
 } from './pipeline-from-rule';
 import { findMatchingRule, resolveEffectiveRuleSetIds } from './rule-resolution';
+import { buildProxyHeaders } from './proxy-headers.util';
 
 export interface InvokeRequest {
   projectId: string;
@@ -134,7 +135,8 @@ export class RuleInvokerService {
     const pipeline = pipelineFromRule(rule, req.projectId);
     if (!pipeline)
       return { ok: false, failure: { kind: 'error', message: 'Pipeline configuration missing' } };
-    if (pipeline.steps.some((step) => step.handlerType === 'mcp_handler')) {
+    const allSteps = [...pipeline.steps, ...(pipeline.postSteps ?? [])];
+    if (allSteps.some((step) => step.handlerType === 'mcp_handler')) {
       return { ok: false, failure: { kind: 'recursion' } };
     }
 
@@ -188,18 +190,17 @@ export class RuleInvokerService {
     for (const [key, value] of Object.entries(req.query ?? {})) {
       target.searchParams.set(key, typeof value === 'string' ? value : JSON.stringify(value));
     }
+    // The rule's own header controls decide what of the caller reaches the target —
+    // the same `forwardCookies` / `authTransform` / `headerConfig` the edge applies.
+    // An in-process call is not a licence to forward the caller's credential.
     const parent = req.parent.headers;
-    const headers: Record<string, string> = {
-      accept: 'application/json, text/plain, */*',
-      'x-forwarded-host': first(parent['x-forwarded-host']) ?? first(parent.host) ?? '',
-      'x-original-uri': req.path,
-    };
-    const cookie = first(parent.cookie);
-    if (cookie) headers.cookie = cookie;
-    const authorization = first(parent.authorization);
-    if (authorization) headers.authorization = authorization;
+    const headers = buildProxyHeaders(req.parent, rule, this.logger);
+    headers.accept = 'application/json, text/plain, */*';
+    headers['x-forwarded-host'] = first(parent['x-forwarded-host']) ?? first(parent.host) ?? '';
+    headers['x-original-uri'] = req.path;
     const hasBody = req.body !== undefined && req.method !== 'GET';
     if (hasBody) headers['content-type'] = 'application/json';
+    else delete headers['content-type'];
     try {
       const res = await fetch(target, {
         method: req.method,

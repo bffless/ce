@@ -133,5 +133,5 @@ A pipeline step (`mcp_handler`) that answers as a stateless MCP server from its 
 _Avoid_: "the MCP server" (ambiguous with the platform-admin one), "MCP endpoint" (the app's rule, not the handler)
 
 **Sibling rule**:
-Another rule of the same alias's effective rule sets, invoked in-process by `RuleInvokerService` with the caller's identity and the sibling's own validators (`auth_required`, `requiredScopes`, `rate_limit`) — never the deployment visibility gate twice, and never nested (a sibling that is itself an MCP handler is refused). How an MCP tool runs, and the runtime cousin of the `alias://` idea (#698).
+Another rule of the same alias's effective rule sets, invoked in-process by `RuleInvokerService` with the caller's identity and the sibling's own validators (`auth_required`, `requiredScopes`, `rate_limit`) — and, for an `external_proxy` sibling, its own header controls (`forwardCookies`, `authTransform`, `headerConfig`), exactly as at the edge — never the deployment visibility gate twice, and never nested (a sibling that is itself an MCP handler is refused). How an MCP tool runs, and the runtime cousin of the `alias://` idea (#698).
 _Avoid_: "internal call", "sub-pipeline"
