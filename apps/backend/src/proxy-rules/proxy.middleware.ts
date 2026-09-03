@@ -38,7 +38,12 @@ import { VisibilityService, AccessControlInfo } from '../domains/visibility.serv
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
 import { UserGroupsService } from '../user-groups/user-groups.service';
-import { matchesMethod } from './method-match';
+import {
+  findMatchingRule as findMatchingRuleShared,
+  matchesPattern as matchesPatternShared,
+  resolveProjectDefaultRuleSetIds as resolveProjectDefaultRuleSetIdsShared,
+  resolveRuleSetIdsForAlias as resolveRuleSetIdsForAliasShared,
+} from './rule-resolution';
 
 interface ParsedPublicPath {
   owner: string;
@@ -1015,58 +1020,19 @@ export class ProxyMiddleware implements NestMiddleware {
     };
   }
 
-  /**
-   * Resolve rule set IDs for an alias.
-   * Checks join table first, falls back to legacy proxyRuleSetId column.
-   */
-  private async resolveRuleSetIdsForAlias(
+  /** Rule resolution lives in `rule-resolution.ts`, shared with the in-process invoker. */
+  private resolveRuleSetIdsForAlias(
     aliasId: string,
     legacyProxyRuleSetId: string | null,
   ): Promise<string[]> {
-    // Check join table first
-    const joinRows = await db
-      .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
-      .from(aliasProxyRuleSets)
-      .where(eq(aliasProxyRuleSets.aliasId, aliasId))
-      .orderBy(asc(aliasProxyRuleSets.order));
-
-    if (joinRows.length > 0) {
-      return joinRows.map((r) => r.proxyRuleSetId);
-    }
-
-    // Fall back to legacy column
-    if (legacyProxyRuleSetId) {
-      return [legacyProxyRuleSetId];
-    }
-
-    return [];
+    return resolveRuleSetIdsForAliasShared(aliasId, legacyProxyRuleSetId);
   }
 
-  /**
-   * Resolve default rule set IDs for a project.
-   * Checks join table first, falls back to legacy defaultProxyRuleSetId column.
-   */
-  private async resolveProjectDefaultRuleSetIds(
+  private resolveProjectDefaultRuleSetIds(
     projectId: string,
     legacyDefaultProxyRuleSetId: string | null,
   ): Promise<string[]> {
-    // Check join table first
-    const joinRows = await db
-      .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
-      .from(projectDefaultProxyRuleSets)
-      .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
-      .orderBy(asc(projectDefaultProxyRuleSets.order));
-
-    if (joinRows.length > 0) {
-      return joinRows.map((r) => r.proxyRuleSetId);
-    }
-
-    // Fall back to legacy column
-    if (legacyDefaultProxyRuleSetId) {
-      return [legacyDefaultProxyRuleSetId];
-    }
-
-    return [];
+    return resolveProjectDefaultRuleSetIdsShared(projectId, legacyDefaultProxyRuleSetId);
   }
 
   /**
@@ -1127,26 +1093,7 @@ export class ProxyMiddleware implements NestMiddleware {
    * - If rule.method is set, it must match the request method (case-insensitive)
    */
   private findMatchingRule(rules: ProxyRule[], subpath: string, method?: string): ProxyRule | null {
-    const requestMethod = method?.toUpperCase();
-
-    for (const rule of rules) {
-      if (!rule.isEnabled) {
-        continue;
-      }
-
-      // Check path pattern first
-      if (!this.matchesPattern(rule.pathPattern, subpath)) {
-        continue;
-      }
-
-      // Check method(s): methods[] wins, else single method, else any (case-insensitive)
-      if (!matchesMethod(rule, requestMethod)) {
-        continue;
-      }
-
-      return rule;
-    }
-    return null;
+    return findMatchingRuleShared(rules, subpath, method);
   }
 
   /**
@@ -1671,19 +1618,6 @@ export class ProxyMiddleware implements NestMiddleware {
    * - Middle:  '/api/uploads/feedback-*' matches '/api/uploads/feedback-screenshots'
    */
   private matchesPattern(pattern: string, path: string): boolean {
-    if (pattern === path) return true;
-    if (!pattern.includes('*')) return false;
-
-    // Note: '/prefix/*' matches '/prefix/' and '/prefix/<sub>' but NOT the bare
-    // '/prefix' — the wildcard requires a path separator. This lets a same-named
-    // client-side SPA route (e.g. bare '/auth') fall through to the SPA fallback
-    // while subpaths (e.g. '/auth/signin') are still proxied. To also match the
-    // bare prefix, use '/prefix*' or add an explicit '/prefix' rule.
-
-    // Glob → regex: escape regex metacharacters (but not '*'), then replace
-    // '*' with '.*' and anchor. Handles trailing, leading, and middle wildcards.
-    const regexSource =
-      '^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
-    return new RegExp(regexSource).test(path);
+    return matchesPatternShared(pattern, path);
   }
 }
