@@ -254,11 +254,17 @@ export class RuleInvokerService {
           )
           .join('&')
       : '';
+    // The edge rewrites a domain request to `/public/<owner>/<repo>/alias/<a>/<dir><public path>`
+    // and keeps the public path in `x-original-uri`; a sibling sees the same shape, so a
+    // function that derives the alias's in-process base from `request.path` (the way the
+    // Workflow prototype did) keeps working — and CE's routing reads the two headers.
+    const prefix = publicPrefixOf(req.parent);
+    headers['x-original-uri'] = `${req.path}${qs}`;
     const synthetic = {
-      path: req.path,
+      path: `${prefix}${req.path}`,
       method: req.method,
-      url: `${req.path}${qs}`,
-      originalUrl: `${req.path}${qs}`,
+      url: `${prefix}${req.path}${qs}`,
+      originalUrl: `${prefix}${req.path}${qs}`,
       headers,
       query,
       body: req.body ?? {},
@@ -279,6 +285,21 @@ export class RuleInvokerService {
     };
     return synthetic as unknown as Request;
   }
+}
+
+/**
+ * `/public/<owner>/<repo>/alias/<a>/<dir>` from the parent: its `path` minus the
+ * public-relative path `x-original-uri` carries (query dropped). `''` when the
+ * parent was not a rewritten domain request.
+ */
+export function publicPrefixOf(parent: Request): string {
+  const path = typeof parent.path === 'string' ? parent.path : '';
+  if (!path.startsWith('/public/')) return '';
+  const original = first(parent.headers['x-original-uri']);
+  const originalPath = original ? original.split('?')[0] : '';
+  if (originalPath !== '' && path.endsWith(originalPath))
+    return path.slice(0, -originalPath.length);
+  return '';
 }
 
 function first(value: string | string[] | undefined): string | undefined {

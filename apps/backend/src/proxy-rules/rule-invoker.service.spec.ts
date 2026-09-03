@@ -1,4 +1,9 @@
-import { RuleInvokerService, buildTargetUrl, MAX_INVOKE_DEPTH } from './rule-invoker.service';
+import {
+  RuleInvokerService,
+  buildTargetUrl,
+  publicPrefixOf,
+  MAX_INVOKE_DEPTH,
+} from './rule-invoker.service';
 import { Request } from 'express';
 
 jest.mock('../db/client', () => ({
@@ -266,5 +271,47 @@ describe('buildTargetUrl (ProxyService parity)', () => {
         '/api/x',
       ).toString(),
     ).toBe('http://host/api/x');
+  });
+});
+
+describe('publicPrefixOf', () => {
+  it("keeps the edge's rewrite shape for a sibling", () => {
+    const p = (path: string, original?: string) =>
+      ({ path, headers: original ? { 'x-original-uri': original } : {} }) as unknown as Request;
+    expect(
+      publicPrefixOf(
+        p('/public/o/r/alias/workflow/dist/api/workflow/mcp', '/api/workflow/mcp?x=1'),
+      ),
+    ).toBe('/public/o/r/alias/workflow/dist');
+    expect(publicPrefixOf(p('/api/workflow/mcp', '/api/workflow/mcp'))).toBe('');
+    expect(publicPrefixOf(p('/public/o/r/alias/workflow/dist/api/workflow/mcp'))).toBe('');
+  });
+  it("gives the synthetic request the parent's prefix and the sibling path as x-original-uri", async () => {
+    const proxyRulesService = {
+      getEffectiveRulesForMultipleRuleSets: jest.fn().mockResolvedValue([rule()]),
+    };
+    const execution = {
+      executePipelineWithDebug: jest
+        .fn()
+        .mockResolvedValue({ success: true, response: { status: 200, body: {} } }),
+    };
+    const service = new RuleInvokerService(proxyRulesService as never, execution as never);
+    mockDb.limit.mockReset();
+    mockDb.limit.mockResolvedValueOnce([project]).mockResolvedValueOnce([aliasRow]);
+    const parentEdge = {
+      ...parent,
+      path: '/public/o/r/alias/workflow/dist/api/workflow/mcp',
+      headers: { ...parent.headers, 'x-original-uri': '/api/workflow/mcp' },
+    } as unknown as Request;
+    await service.invoke({
+      ...base,
+      parent: parentEdge,
+      query: { a: '1' },
+      method: 'GET',
+      body: undefined,
+    });
+    const synthetic = execution.executePipelineWithDebug.mock.calls[0][1];
+    expect(synthetic.path).toBe('/public/o/r/alias/workflow/dist/api/app/read');
+    expect(synthetic.headers['x-original-uri']).toBe('/api/app/read?a=1');
   });
 });
