@@ -330,6 +330,13 @@
       "when": 1788039854342,
       "tag": "0046_blue_cloak",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1788432634156,
+      "tag": "0047_volatile_robbie_robertson",
+      "breakpoints": true
     }
   ]
 }
