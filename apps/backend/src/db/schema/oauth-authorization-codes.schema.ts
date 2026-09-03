@@ -7,13 +7,13 @@ import { projects } from './projects.schema';
 export const oauthAuthorizationCodes = pgTable('oauth_authorization_codes', {
   codeHash: varchar('code_hash', { length: 64 }).primaryKey(),
   clientId: uuid('client_id')
-    .references(() => oauthClients.clientId)
+    .references(() => oauthClients.clientId, { onDelete: 'cascade' })
     .notNull(),
   userId: uuid('user_id')
-    .references(() => users.id)
+    .references(() => users.id, { onDelete: 'cascade' })
     .notNull(),
   projectId: uuid('project_id')
-    .references(() => projects.id)
+    .references(() => projects.id, { onDelete: 'cascade' })
     .notNull(),
   scopes: jsonb('scopes').$type<string[]>().notNull(),
   codeChallenge: varchar('code_challenge', { length: 128 }).notNull(),

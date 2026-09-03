@@ -14,17 +14,17 @@ export const oauthRefreshTokens = pgTable(
     tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
     familyId: uuid('family_id').notNull(),
     clientId: uuid('client_id')
-      .references(() => oauthClients.clientId)
+      .references(() => oauthClients.clientId, { onDelete: 'cascade' })
       .notNull(),
     userId: uuid('user_id')
-      .references(() => users.id)
+      .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
     projectId: uuid('project_id')
-      .references(() => projects.id)
+      .references(() => projects.id, { onDelete: 'cascade' })
       .notNull(),
     scopes: jsonb('scopes').$type<string[]>().notNull(),
     /** The access token (an app token) this refresh token last issued. */
-    appTokenId: uuid('app_token_id').references(() => appTokens.id),
+    appTokenId: uuid('app_token_id').references(() => appTokens.id, { onDelete: 'set null' }),
     expiresAt: timestamp('expires_at').notNull(),
     rotatedAt: timestamp('rotated_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
