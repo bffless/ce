@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.45](https://github.com/bffless/ce/compare/v0.4.44...v0.4.45) (2026-09-03)
+
+
+### Added
+
+* **auth:** OAuth 2.1 authorization server — DCR, PKCE, RFC 8414/9728/8707; access tokens are app tokens ([#734](https://github.com/bffless/ce/issues/734)) ([393ab10](https://github.com/bffless/ce/commit/393ab100321b0025ac9f7f2fac3a9552052cc56d))
+
+
+### Fixed
+
+* **proxy-rules:** the invoker parses a sibling's JSON answer the response handler passed through as a string ([#737](https://github.com/bffless/ce/issues/737)) ([26e7e8c](https://github.com/bffless/ce/commit/26e7e8cf897b68fd227c33353891d8704d5ba8f1))
+
 ## [0.4.44](https://github.com/bffless/ce/compare/v0.4.43...v0.4.44) (2026-09-03)
 
 ### Added
