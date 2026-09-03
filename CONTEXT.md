@@ -46,7 +46,7 @@ A per-rule opt-out of the deployment visibility gate (`bypassVisibility: true` i
 _Avoid_: "public rule" (deployment visibility is a different setting)
 
 **Authorization server**:
-CE's built-in OAuth 2.1 server on the admin host (`/api/oauth/*`; RFC 8414 metadata at `/.well-known/oauth-authorization-server`). Clients register themselves (RFC 7591, public clients only); a member consents per project and per scope on `/oauth/consent`; the access token *is* an App token, bound to the project the RFC 8707 `resource` named. Not SuperTokens' OAuth2Provider recipe (ADR-0005).
+CE's built-in OAuth 2.1 server on the admin host (`/api/oauth/*`; RFC 8414 metadata at `/.well-known/oauth-authorization-server`). Clients register themselves (RFC 7591, public clients only); a member consents per project and per scope on `/oauth/consent`; the access token _is_ an App token, bound to the project the RFC 8707 `resource` named. Not SuperTokens' OAuth2Provider recipe (ADR-0005).
 _Avoid_: "SuperTokens OAuth", "SSO" (that is the member's own login, the other direction)
 
 **Protected-resource document**:
