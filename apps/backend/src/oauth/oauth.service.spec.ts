@@ -50,9 +50,15 @@ const prm = async () => ({
   }),
 });
 
-function make() {
+function make(configOverrides: Record<string, string | undefined> = {}) {
   const config = {
-    get: (k: string) => ({ JWT_SECRET: 'test-secret', FRONTEND_URL: 'https://admin.j5s.dev/' })[k],
+    get: (k: string) =>
+      ({
+        JWT_SECRET: 'test-secret',
+        FRONTEND_URL: 'https://www.j5s.dev',
+        ADMIN_DOMAIN: 'admin.j5s.dev',
+        ...configOverrides,
+      })[k],
   };
   const appTokens = {
     create: jest.fn().mockResolvedValue({ view: { id: 'tok-1' }, raw: 'bfat_raw' }),
@@ -82,10 +88,34 @@ describe('OAuthService', () => {
     for (const m of Object.keys(mockDb)) mockDb[m].mockReturnValue(mockDb);
   });
 
-  it('publishes RFC 8414 metadata on the issuer', () => {
+  it('publishes RFC 8414 metadata on the issuer — the admin host, never the public site', () => {
     const { service } = make();
     const m = service.metadata();
     expect(m.issuer).toBe('https://admin.j5s.dev');
+    // an installed instance: FRONTEND_URL is www.<domain> (a project's rules answer its /api/*), ADMIN_DOMAIN the admin host
+    expect(
+      make({
+        FRONTEND_URL: 'https://www.example.com',
+        ADMIN_DOMAIN: 'admin.example.com',
+      }).service.issuer(),
+    ).toBe('https://admin.example.com');
+    // an explicit issuer wins; a scheme on ADMIN_DOMAIN is kept
+    expect(make({ OAUTH_ISSUER: 'https://auth.example.com/' }).service.issuer()).toBe(
+      'https://auth.example.com',
+    );
+    expect(make({ ADMIN_DOMAIN: 'http://admin.example.com/' }).service.issuer()).toBe(
+      'http://admin.example.com',
+    );
+    // local dev: admin.localhost is not a host a client can reach — the frontend URL serves both
+    expect(
+      make({
+        FRONTEND_URL: 'http://localhost:5173/',
+        ADMIN_DOMAIN: 'admin.localhost',
+      }).service.issuer(),
+    ).toBe('http://localhost:5173');
+    expect(
+      make({ FRONTEND_URL: 'http://localhost:3000', ADMIN_DOMAIN: undefined }).service.issuer(),
+    ).toBe('http://localhost:3000');
     expect(m.authorization_endpoint).toBe('https://admin.j5s.dev/api/oauth/authorize');
     expect(m.registration_endpoint).toBe('https://admin.j5s.dev/api/oauth/register');
     expect(m.code_challenge_methods_supported).toEqual(['S256']);
