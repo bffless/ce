@@ -68,9 +68,23 @@ export class OAuthService {
     return secret;
   }
 
-  /** The issuer: the admin host (`FRONTEND_URL`), no trailing slash. */
+  /**
+   * The issuer (RFC 8414): the admin host, where `/api/oauth/*` and the
+   * consent page live. `OAUTH_ISSUER` when set; else `https://<ADMIN_DOMAIN>`
+   * (`admin.<PRIMARY_DOMAIN>` on an installed instance — never `FRONTEND_URL`,
+   * which is the public site `www.<domain>` whose `/api/*` is a project's
+   * proxy rules); else `FRONTEND_URL` for a local dev instance, where the
+   * admin SPA and the API share it.
+   */
   issuer(): string {
-    return (this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173').replace(/\/+$/, '');
+    const trim = (url: string) => url.replace(/\/+$/, '');
+    const explicit = this.config.get<string>('OAUTH_ISSUER');
+    if (explicit) return trim(explicit);
+    const adminDomain = (this.config.get<string>('ADMIN_DOMAIN') || '').trim();
+    if (adminDomain && !/^(admin\.)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(adminDomain)) {
+      return /^https?:\/\//i.test(adminDomain) ? trim(adminDomain) : `https://${adminDomain}`;
+    }
+    return trim(this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173');
   }
 
   metadata(): AuthorizationServerMetadata {
