@@ -29,6 +29,9 @@ const BLOCKLIST_REGEN_DEBOUNCE_MS = 1_500;
  */
 const BLOCKLIST_LOAD_WAIT_MS = 15_000;
 
+/** A `.<name>.conf.tmp` staging file older than this is a failed write's debris. */
+const STALE_STAGING_MS = 10 * 60 * 1000;
+
 /**
  * Service that regenerates all nginx configs on backend startup.
  * This ensures any template changes are applied automatically without
@@ -226,6 +229,24 @@ export class NginxStartupService implements OnModuleInit {
 
     const domainRe = /^domain-([a-f0-9-]+)\.conf$/;
     const redirectRe = /^redirect-([a-f0-9-]+)\.conf$/;
+
+    // Staging files (`.<name>.conf.tmp`) are renamed into place within
+    // milliseconds; one still here after STALE_STAGING_MS is debris from a
+    // failed write and is removed so it cannot pile up on the mount.
+    const stagingRe = /^\..+\.conf\.tmp$/;
+    const { stat } = await import('fs/promises');
+    for (const file of files) {
+      if (!stagingRe.test(file)) continue;
+      try {
+        const info = await stat(join(sitesPath, file));
+        if (Date.now() - info.mtimeMs > STALE_STAGING_MS) {
+          await unlink(join(sitesPath, file));
+          this.logger.warn(`Removed stale nginx staging file: ${file}`);
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to inspect ${file}: ${error}`);
+      }
+    }
 
     const fileEntries: Array<{ file: string; id: string; kind: 'domain' | 'redirect' }> = [];
     for (const file of files) {

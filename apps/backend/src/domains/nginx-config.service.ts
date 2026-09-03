@@ -888,12 +888,7 @@ ${spaFallback}
   ): Promise<{ tempPath: string; finalPath: string }> {
     const filename = `domain-${domainMappingId}.conf`;
     const finalPath = join(this.getNginxSitesPath(), filename);
-    // The temp file lives beside its target so the move into place is an
-    // atomic rename on the same filesystem (nginx and its watcher never see a
-    // half-written file). The dot prefix keeps it out of nginx's
-    // `include sites-enabled/*.conf` and out of the watcher's reload until it
-    // is renamed — inotify reports that rename as moved_to.
-    const tempPath = join(this.getNginxSitesPath(), `.${filename}.tmp`);
+    const tempPath = this.stagingPathFor(filename);
 
     // Write to temp file
     await writeFile(tempPath, config, 'utf-8');
@@ -910,6 +905,18 @@ ${spaFallback}
     } catch {
       this.logger.warn(`Config file not found: ${nginxConfigPath}`);
     }
+  }
+
+  /**
+   * Where a rendered config is staged before it is renamed into place: beside
+   * its target, dot-prefixed and `.tmp`-suffixed — same filesystem (so the
+   * move is one atomic rename and nginx never sees a half-written file), and
+   * outside nginx's `include sites-enabled/*.conf` until renamed. Every
+   * writer in this service stages here; `/tmp` is another filesystem in the
+   * container and would force a copy.
+   */
+  stagingPathFor(filename: string): string {
+    return join(this.getNginxSitesPath(), `.${filename}.tmp`);
   }
 
   getConfigFilePath(domainMappingId: string): string {
@@ -1179,7 +1186,7 @@ ${httpServerBlock}${httpsServerBlock}
     const baseDomain = this.getBaseDomain();
     // Use domain mapping ID in filename for consistency with other domain mappings
     const filename = `domain-${config.id}.conf`;
-    const tempPath = join('/tmp', filename);
+    const tempPath = this.stagingPathFor(filename);
     const finalPath = join(this.getNginxSitesPath(), filename);
 
     // Check if nginx should handle SSL directly
@@ -1586,7 +1593,7 @@ ${proxyRulesComment}${serverBlocks}`;
   async generateWelcomePageConfig(): Promise<{ tempPath: string; finalPath: string }> {
     const baseDomain = this.getBaseDomain();
     const filename = 'primary-content.conf';
-    const tempPath = join('/tmp', filename);
+    const tempPath = this.stagingPathFor(filename);
     const finalPath = join(this.getNginxSitesPath(), filename);
 
     const nginxConfig = this.generateWelcomePageNginxConfig(baseDomain);
@@ -1877,7 +1884,7 @@ ${this.buildEdgeBlocklistRules('444')}
     config: string,
   ): Promise<{ tempPath: string; finalPath: string }> {
     const filename = `redirect-${redirectId}.conf`;
-    const tempPath = join('/tmp', filename);
+    const tempPath = this.stagingPathFor(filename);
     const finalPath = join(this.getNginxSitesPath(), filename);
 
     await writeFile(tempPath, config, 'utf-8');
