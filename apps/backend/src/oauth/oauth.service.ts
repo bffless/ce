@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import * as jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 import { db } from '../db/client';
@@ -15,6 +15,7 @@ import {
 } from '../db/schema';
 import { hashToken } from '../auth/app-token.util';
 import { AppTokensService } from '../app-tokens/app-tokens.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { SCOPE_PATTERN } from '../pipelines/types';
 import { OAuthError } from './oauth.errors';
 import { isValidVerifier, verifyS256 } from './pkce.util';
@@ -58,6 +59,7 @@ export class OAuthService {
   constructor(
     private readonly config: ConfigService,
     private readonly appTokens: AppTokensService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   private get jwtSecret(): string {
@@ -209,8 +211,24 @@ export class OAuthService {
   }
 
   /** The member decided. Approve → an authorization code bound to the (possibly narrowed) scopes. */
+  /**
+   * The pending request as the consent page may show it — only to a member of
+   * the project it names. Any other signed-in user gets `access_denied` (403)
+   * and learns nothing about the project or the client.
+   */
+  async pendingFor(
+    userId: string,
+    userRole: string | undefined,
+    request: string,
+  ): Promise<PendingRequest> {
+    const pending = this.readPending(request);
+    await this.assertMember(userId, userRole, pending.projectId);
+    return pending;
+  }
+
   async consent(
     userId: string,
+    userRole: string | undefined,
     request: string,
     decision: { approve: boolean; scopes?: string[] },
   ): Promise<{ redirectTo: string }> {
@@ -222,6 +240,7 @@ export class OAuthService {
       url.searchParams.set('error_description', 'the member declined');
       return { redirectTo: url.toString() };
     }
+    await this.assertMember(userId, userRole, pending.projectId);
     const granted = (decision.scopes ?? pending.scopes).filter((scope) =>
       pending.scopes.includes(scope),
     );
@@ -282,10 +301,22 @@ export class OAuthService {
       throw new OAuthError('invalid_grant', 'redirect_uri mismatch');
     if (!verifyS256(verifier, row.codeChallenge))
       throw new OAuthError('invalid_grant', 'PKCE verification failed');
-    await db
+    // Consume atomically: the UPDATE carries the not-yet-used condition, so of two
+    // concurrent exchanges exactly one gets the row back; the other is a replay.
+    const consumed = await db
       .update(oauthAuthorizationCodes)
       .set({ usedAt: new Date() })
-      .where(eq(oauthAuthorizationCodes.codeHash, row.codeHash));
+      .where(
+        and(
+          eq(oauthAuthorizationCodes.codeHash, row.codeHash),
+          isNull(oauthAuthorizationCodes.usedAt),
+        ),
+      )
+      .returning({ codeHash: oauthAuthorizationCodes.codeHash });
+    if (!Array.isArray(consumed) || consumed.length === 0) {
+      await this.revokeFamilyOfCode(row.codeHash);
+      throw new OAuthError('invalid_grant', 'code already used');
+    }
     return this.issue({
       clientId: row.clientId,
       userId: row.userId,
@@ -317,10 +348,19 @@ export class OAuthService {
     const requested = str(body.scope).split(/\s+/).filter(Boolean);
     const scopes = requested.length ? requested.filter((s) => row.scopes.includes(s)) : row.scopes;
     if (scopes.length === 0) throw new OAuthError('invalid_scope', 'no granted scope requested');
-    await db
+    // Rotate atomically (same shape as the code exchange): a second concurrent
+    // presentation finds no un-rotated row and is treated as the replay it is.
+    const rotated = await db
       .update(oauthRefreshTokens)
       .set({ rotatedAt: new Date() })
-      .where(eq(oauthRefreshTokens.tokenHash, row.tokenHash));
+      .where(
+        and(eq(oauthRefreshTokens.tokenHash, row.tokenHash), isNull(oauthRefreshTokens.rotatedAt)),
+      )
+      .returning({ tokenHash: oauthRefreshTokens.tokenHash });
+    if (!Array.isArray(rotated) || rotated.length === 0) {
+      await this.revokeFamily(row.familyId);
+      throw new OAuthError('invalid_grant', 'refresh_token was already used; the grant is revoked');
+    }
     if (row.appTokenId) {
       await db
         .update(appTokens)
@@ -359,16 +399,25 @@ export class OAuthService {
       throw new OAuthError('invalid_grant', 'the member no longer exists');
     const expiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_S * 1000);
     // The same mint a member does by hand: the membership check applies (a token never elevates).
-    const { view, raw } = await this.appTokens.create(
-      grant.userId,
-      user.role,
-      {
-        name: `OAuth: ${client?.clientName ?? grant.clientId}`,
-        project: `${project.owner}/${project.name}`,
-        scopes: grant.scopes,
-      },
-      { kind: 'oauth', clientId: grant.clientId, expiresAt },
-    );
+    let minted: Awaited<ReturnType<AppTokensService['create']>>;
+    try {
+      minted = await this.appTokens.create(
+        grant.userId,
+        user.role,
+        {
+          name: `OAuth: ${client?.clientName ?? grant.clientId}`,
+          project: `${project.owner}/${project.name}`,
+          scopes: grant.scopes,
+        },
+        { kind: 'oauth', clientId: grant.clientId, expiresAt },
+      );
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw new OAuthError('invalid_grant', 'the member no longer belongs to the project');
+      }
+      throw error;
+    }
+    const { view, raw } = minted;
     const refreshRaw = REFRESH_PREFIX + randomBytes(32).toString('hex');
     await db.insert(oauthRefreshTokens).values({
       tokenHash: hashToken(refreshRaw),
@@ -430,6 +479,23 @@ export class OAuthService {
   }
 
   /** A replayed code revokes everything its first exchange issued: the family id is derived from the code. */
+  /** The same membership rule `AppTokensService.create` applies at mint time, RFC-shaped. */
+  private async assertMember(
+    userId: string,
+    userRole: string | undefined,
+    projectId: string,
+  ): Promise<void> {
+    if (userRole === 'admin') return;
+    const role = await this.permissions.getUserProjectRole(userId, projectId);
+    if (!role || role === 'guest') {
+      throw new OAuthError(
+        'access_denied',
+        'you are not a member of this project',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+
   private async revokeFamilyOfCode(codeHash: string): Promise<void> {
     await this.revokeFamily(familyOfCode(codeHash));
   }
@@ -446,10 +512,11 @@ export class OAuthService {
       throw new OAuthError('invalid_target', 'resource must be an absolute URL');
     }
     const host = url.hostname;
+    const [primary, alternate] = resourceHosts(host);
     const [mapping] = await db
       .select()
       .from(domainMappings)
-      .where(eq(domainMappings.domain, host))
+      .where(or(eq(domainMappings.domain, primary), eq(domainMappings.domain, alternate)))
       .limit(1);
     if (!mapping || !mapping.isActive || !mapping.projectId || mapping.domainType === 'redirect') {
       throw new OAuthError('invalid_target', `no deployment answers ${host}`);
@@ -518,3 +585,13 @@ const defaultFetch: FetchLike = async (url, init) => {
   const res = await fetch(url, { headers: init.headers, signal: AbortSignal.timeout(10_000) });
   return { status: res.status, json: () => res.json() };
 };
+
+/**
+ * A resource's host and its www/non-www alternate — a primary domain with
+ * "redirect to www" stores one variant in `domain_mappings` while clients present
+ * the other (the same rule `VisibilityService` and `TrafficRoutingService` apply).
+ */
+export function resourceHosts(host: string): [string, string] {
+  const normalized = host.toLowerCase();
+  return [normalized, normalized.startsWith('www.') ? normalized.slice(4) : `www.${normalized}`];
+}

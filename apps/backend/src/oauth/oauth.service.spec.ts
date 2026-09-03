@@ -1,5 +1,5 @@
 import * as jwt from 'jsonwebtoken';
-import { OAuthService, familyOfCode } from './oauth.service';
+import { OAuthService, resourceHosts, familyOfCode } from './oauth.service';
 import { OAuthError } from './oauth.errors';
 import { challengeOf } from './pkce.util';
 import { hashToken } from '../auth/app-token.util';
@@ -57,7 +57,12 @@ function make() {
   const appTokens = {
     create: jest.fn().mockResolvedValue({ view: { id: 'tok-1' }, raw: 'bfat_raw' }),
   };
-  return { service: new OAuthService(config as never, appTokens as never), appTokens };
+  const permissions = { getUserProjectRole: jest.fn().mockResolvedValue('contributor') };
+  return {
+    service: new OAuthService(config as never, appTokens as never, permissions as never),
+    appTokens,
+    permissions,
+  };
 }
 
 const authorizeParams = (over: Record<string, unknown> = {}) => ({
@@ -149,6 +154,27 @@ describe('OAuthService', () => {
       expect(pending.exp - pending.iat).toBe(600);
       expect(service.readPending(request)).toMatchObject({ clientId: 'c1', projectId: 'p1' });
     });
+    it('resolves the www/non-www alternate of the resource host, like every other domain lookup', async () => {
+      const { service } = make();
+      expect(resourceHosts('www.Example.com')).toEqual(['www.example.com', 'example.com']);
+      expect(resourceHosts('example.com')).toEqual(['example.com', 'www.example.com']);
+      mockDb.limit
+        .mockResolvedValueOnce([client])
+        .mockResolvedValueOnce([mapping])
+        .mockResolvedValueOnce([project]);
+      const fetchImpl = jest.fn(prm);
+      const { pending } = await service.beginAuthorization(
+        authorizeParams({ resource: 'https://www.workflow.j5s.dev/api/workflow/mcp' }),
+        fetchImpl,
+      );
+      expect(pending.projectId).toBe('p1');
+      expect(fetchImpl).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'x-forwarded-host': 'www.workflow.j5s.dev' }),
+        }),
+      );
+    });
     it('narrows to the requested scopes and refuses an unknown one', async () => {
       const { service } = make();
       mockDb.limit
@@ -237,12 +263,12 @@ describe('OAuthService', () => {
 
     it('denial redirects with access_denied and the state; approval stores a hashed code with the granted subset', async () => {
       const { service } = make();
-      const denied = await service.consent('u1', pendingFor(service), { approve: false });
+      const denied = await service.consent('u1', 'user', pendingFor(service), { approve: false });
       expect(denied.redirectTo).toBe(
         'https://claude.ai/cb?state=xyz&error=access_denied&error_description=the+member+declined',
       );
       mockDb.values.mockReturnValueOnce(Promise.resolve());
-      const ok = await service.consent('u1', pendingFor(service), {
+      const ok = await service.consent('u1', 'user', pendingFor(service), {
         approve: true,
         scopes: ['workflow:read', 'workflow:admin'],
       });
@@ -259,8 +285,31 @@ describe('OAuthService', () => {
     it('refuses an empty grant', async () => {
       const { service } = make();
       await expect(
-        service.consent('u1', pendingFor(service), { approve: true, scopes: [] }),
+        service.consent('u1', 'user', pendingFor(service), { approve: true, scopes: [] }),
       ).rejects.toMatchObject({ error: 'invalid_scope' });
+    });
+    it('shows and grants only to a member of the named project; an admin passes without a role row', async () => {
+      const { service, permissions } = make();
+      permissions.getUserProjectRole.mockResolvedValueOnce(null);
+      await expect(service.pendingFor('u2', 'user', pendingFor(service))).rejects.toMatchObject({
+        error: 'access_denied',
+        status: 403,
+      });
+      permissions.getUserProjectRole.mockResolvedValueOnce('guest');
+      await expect(
+        service.consent('u2', 'user', pendingFor(service), { approve: true }),
+      ).rejects.toMatchObject({ error: 'access_denied' });
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      // a non-member's Deny still redirects — nothing about the project is revealed by it
+      const denied = await service.consent('u2', 'user', pendingFor(service), { approve: false });
+      expect(denied.redirectTo).toContain('error=access_denied');
+      permissions.getUserProjectRole.mockClear();
+      await expect(service.pendingFor('root', 'admin', pendingFor(service))).resolves.toMatchObject(
+        {
+          projectId: 'p1',
+        },
+      );
+      expect(permissions.getUserProjectRole).not.toHaveBeenCalled();
     });
   });
 
@@ -295,6 +344,7 @@ describe('OAuthService', () => {
         .mockResolvedValueOnce([client])
         .mockResolvedValueOnce([user]);
       mockDb.where.mockReturnValue(mockDb);
+      mockDb.returning.mockResolvedValueOnce([{ codeHash: hashToken('the-code') }]);
       const out = await service.token(body());
       expect(out).toMatchObject({
         access_token: 'bfat_raw',
@@ -337,6 +387,70 @@ describe('OAuthService', () => {
     });
   });
 
+  describe('token: single use is enforced by the consuming UPDATE, not the earlier read', () => {
+    it('an exchange that finds the code consumed underneath it revokes the family', async () => {
+      const { service, appTokens } = make();
+      mockDb.limit.mockResolvedValueOnce([
+        {
+          codeHash: hashToken('the-code'),
+          clientId: 'c1',
+          userId: 'u1',
+          projectId: 'p1',
+          scopes: ['workflow:read'],
+          codeChallenge: challengeOf(verifier),
+          redirectUri: 'https://claude.ai/cb',
+          resource: 'https://workflow.j5s.dev/api/workflow/mcp',
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+        },
+      ]);
+      mockDb.returning.mockResolvedValueOnce([]); // the other exchange won
+      mockDb.where
+        .mockReturnValueOnce(mockDb)
+        .mockReturnValueOnce(mockDb)
+        .mockResolvedValueOnce([]);
+      await expect(
+        service.token({
+          grant_type: 'authorization_code',
+          code: 'the-code',
+          client_id: 'c1',
+          redirect_uri: 'https://claude.ai/cb',
+          code_verifier: verifier,
+        }),
+      ).rejects.toMatchObject({ error: 'invalid_grant', description: 'code already used' });
+      expect(appTokens.create).not.toHaveBeenCalled();
+      expect(mockDb.set).toHaveBeenCalledWith({
+        rotatedAt: expect.any(Date),
+        expiresAt: expect.any(Date),
+      });
+    });
+    it('a rotation that finds the token rotated underneath it revokes the family', async () => {
+      const { service, appTokens } = make();
+      mockDb.limit.mockResolvedValueOnce([
+        {
+          tokenHash: hashToken('bfrt_old'),
+          familyId: 'fam-1',
+          clientId: 'c1',
+          userId: 'u1',
+          projectId: 'p1',
+          scopes: ['workflow:read'],
+          appTokenId: 'tok-1',
+          expiresAt: new Date(Date.now() + 60_000),
+          rotatedAt: null,
+        },
+      ]);
+      mockDb.returning.mockResolvedValueOnce([]);
+      mockDb.where
+        .mockReturnValueOnce(mockDb)
+        .mockReturnValueOnce(mockDb)
+        .mockResolvedValueOnce([]);
+      await expect(
+        service.token({ grant_type: 'refresh_token', refresh_token: 'bfrt_old', client_id: 'c1' }),
+      ).rejects.toMatchObject({ error: 'invalid_grant' });
+      expect(appTokens.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('token: refresh_token', () => {
     const refreshRow = (over: Record<string, unknown> = {}) => ({
       tokenHash: hashToken('bfrt_old'),
@@ -359,6 +473,7 @@ describe('OAuthService', () => {
         .mockResolvedValueOnce([client])
         .mockResolvedValueOnce([user]);
       mockDb.where.mockReturnValue(mockDb);
+      mockDb.returning.mockResolvedValueOnce([{ tokenHash: 'h1' }]);
       const out = await service.token({
         grant_type: 'refresh_token',
         refresh_token: 'bfrt_old',

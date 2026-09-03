@@ -83,8 +83,8 @@ export class OAuthController {
   @Get('consent')
   @UseGuards(SessionAuthGuard)
   @ApiOperation({ summary: 'What the consent page shows for a pending request' })
-  pending(@Query('request') request: string) {
-    const p = this.oauth.readPending(request ?? '');
+  async pending(@CurrentUser() user: CurrentUserData, @Query('request') request: string) {
+    const p = await this.oauth.pendingFor(user.id, user.role, request ?? '');
     return {
       clientName: p.clientName,
       scopes: p.scopes,
@@ -99,7 +99,10 @@ export class OAuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'The member approves (possibly narrowing the scopes) or denies' })
   decide(@CurrentUser() user: CurrentUserData, @Body() dto: ConsentDecisionDto) {
-    return this.oauth.consent(user.id, dto.request, { approve: dto.approve, scopes: dto.scopes });
+    return this.oauth.consent(user.id, user.role, dto.request, {
+      approve: dto.approve,
+      scopes: dto.scopes,
+    });
   }
 
   @Post('token')

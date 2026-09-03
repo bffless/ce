@@ -13,7 +13,7 @@ function make() {
     metadata: jest.fn().mockReturnValue({ issuer: 'https://admin.example' }),
     registerClient: jest.fn().mockResolvedValue({ client_id: 'c1' }),
     beginAuthorization: jest.fn().mockResolvedValue({ request: 'signed', pending: {} }),
-    readPending: jest.fn().mockReturnValue({
+    pendingFor: jest.fn().mockResolvedValue({
       clientName: 'Claude',
       scopes: ['a:b'],
       projectId: 'p1',
@@ -112,7 +112,7 @@ describe('OAuth controllers', () => {
 
   it('consent GET shapes the pending request; POST delegates the decision', async () => {
     const { controller, service } = make();
-    expect(controller.pending('signed')).toEqual({
+    await expect(controller.pending({ id: 'u1', role: 'user' }, 'signed')).resolves.toEqual({
       clientName: 'Claude',
       scopes: ['a:b'],
       project: { id: 'p1', slug: 'o/r', name: 'R' },
@@ -122,7 +122,8 @@ describe('OAuth controllers', () => {
     await expect(
       controller.decide({ id: 'u1' }, { request: 'signed', approve: true, scopes: ['a:b'] }),
     ).resolves.toEqual({ redirectTo: 'https://claude.ai/cb?code=x' });
-    expect(service.consent).toHaveBeenCalledWith('u1', 'signed', {
+    expect(service.pendingFor).toHaveBeenCalledWith('u1', 'user', 'signed');
+    expect(service.consent).toHaveBeenCalledWith('u1', undefined, 'signed', {
       approve: true,
       scopes: ['a:b'],
     });
