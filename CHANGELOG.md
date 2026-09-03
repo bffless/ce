@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.44](https://github.com/bffless/ce/compare/v0.4.43...v0.4.44) (2026-09-03)
 
-
 ### Added
-
-* **pipelines:** mcp_handler — a generic MCP server step over sibling rules ([#731](https://github.com/bffless/ce/issues/731)) ([d65fb21](https://github.com/bffless/ce/commit/d65fb21285261eceff028b093e16cb46ed6a2afe))
+- pipelines: mcp_handler — a generic MCP server step over sibling rules ([#731](https://github.com/bffless/ce/pull/731), thanks @toshimoto821)
 
 ## [0.4.43](https://github.com/bffless/ce/compare/v0.4.42...v0.4.43) (2026-09-03)
 
