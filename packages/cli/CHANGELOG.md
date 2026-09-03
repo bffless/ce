@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/bffless/ce/compare/bffless-v0.3.5...bffless-v0.3.6) (2026-09-03)
+
+
+### Added
+
+* **auth:** app tokens, auth_required requiredScopes, per-rule bypassVisibility ([#730](https://github.com/bffless/ce/issues/730)) ([aff3180](https://github.com/bffless/ce/commit/aff318089cc8308c71642bcbccfcaa71c674b3f6))
+
 ## [0.3.5](https://github.com/bffless/ce/compare/bffless-v0.3.4...bffless-v0.3.5) (2026-08-29)
 
 
