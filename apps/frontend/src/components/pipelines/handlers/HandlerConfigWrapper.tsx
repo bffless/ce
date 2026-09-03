@@ -30,6 +30,7 @@ import { XmlFeedParseConfig } from './XmlFeedParseConfig';
 import { DataUpsertManyConfig } from './DataUpsertManyConfig';
 import { DelayHandlerConfig } from './DelayHandlerConfig';
 import { FfmpegHandlerConfig } from './FfmpegHandlerConfig';
+import { McpHandlerConfig } from './McpHandlerConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -427,6 +428,10 @@ export function HandlerConfigWrapper({
           />
         </>
       );
+
+    case 'mcp_handler':
+      // No expressions panel: the config is a declaration, not a step over prior outputs.
+      return <McpHandlerConfig config={config} onChange={handleChange} />;
 
     default:
       return (
