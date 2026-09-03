@@ -6,6 +6,7 @@ import { SessionContainer } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';
 import { apiKeys, users } from '../db/schema';
 import { CustomDomainAuthService } from './custom-domain-auth.service';
+import { requestUserFromAppToken, resolveAppToken } from './app-token.util';
 
 /**
  * Optional authentication guard
@@ -57,6 +58,14 @@ export class OptionalAuthGuard implements CanActivate {
       if (authenticated) {
         return true; // Continue with authenticated user
       }
+    }
+
+    // Try a Bearer app token: the member, narrowed by scopes (spec: app tokens).
+    // Precedence X-API-Key → app token → session → custom-domain cookie.
+    const resolved = await resolveAppToken(request.headers.authorization);
+    if (resolved) {
+      request.user = requestUserFromAppToken(resolved, { pinRoleLikeApiKey: false });
+      return true;
     }
 
     // Try session authentication

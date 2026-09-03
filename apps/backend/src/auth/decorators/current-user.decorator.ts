@@ -7,6 +7,14 @@ export interface CurrentUserData {
   sessionHandle?: string;
   apiKeyId?: string;
   apiKeyProjectId?: string | null; // Project ID from API key (null for global keys)
+  /** Set when the caller authenticated with a Bearer app token (app-token.util). */
+  appTokenId?: string;
+  credential?: {
+    kind: 'app_token';
+    appTokenId: string;
+    projectId: string;
+    scopes: string[];
+  };
   // Phase 3H.6: Removed allowedRepositories - use project permissions instead
 }
 

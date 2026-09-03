@@ -23,8 +23,11 @@ export class AuthenticationRequiredError extends PipelineError {
  * Error thrown when the user doesn't have permission
  */
 export class AuthorizationError extends PipelineError {
-  constructor(message = 'Access denied') {
-    super('AUTHORIZATION_ERROR', message, undefined, undefined, HttpStatus.FORBIDDEN);
+  constructor(
+    message = 'Access denied',
+    details?: { code?: 'insufficient_scope' | 'token_project_mismatch'; missingScopes?: string[] },
+  ) {
+    super('AUTHORIZATION_ERROR', message, undefined, details, HttpStatus.FORBIDDEN);
   }
 }
 

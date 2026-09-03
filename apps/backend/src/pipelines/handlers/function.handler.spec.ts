@@ -82,3 +82,35 @@ describe('FunctionHandler.execute — user.groups', () => {
     );
   });
 });
+
+describe('FunctionHandler.execute — user.credential / user.scopes (app tokens)', () => {
+  it('exposes the credential kind and scopes of an app token', async () => {
+    const { handler, runnerMock } = createHandler();
+    runnerMock.run.mockResolvedValue({ success: true, output: {}, executionTime: 1, logs: [] });
+    const context = makeContext({
+      user: { id: 'u1', role: 'user', credential: 'app_token', scopes: ['workflow:read'] },
+    });
+
+    await handler.execute(context, makeStep({ code: 'export default () => ({})' }));
+
+    expect(runnerMock.run).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        user: expect.objectContaining({ credential: 'app_token', scopes: ['workflow:read'] }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('adds nothing for a session user', async () => {
+    const { handler, runnerMock } = createHandler();
+    runnerMock.run.mockResolvedValue({ success: true, output: {}, executionTime: 1, logs: [] });
+    const context = makeContext({ user: { id: 'u1', role: 'user' } });
+
+    await handler.execute(context, makeStep({ code: 'export default () => ({})' }));
+
+    const data = runnerMock.run.mock.calls[0][1] as { user: Record<string, unknown> };
+    expect(data.user).not.toHaveProperty('credential');
+    expect(data.user).not.toHaveProperty('scopes');
+  });
+});

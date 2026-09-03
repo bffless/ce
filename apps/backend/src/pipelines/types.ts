@@ -20,7 +20,17 @@ export type ValidatorType = 'auth_required' | 'rate_limit';
 export interface AuthRequiredConfig {
   roles?: string[];
   allowApiKey?: boolean;
+  /**
+   * Scopes an app token must carry to pass (`namespace:verb`, the app's own
+   * vocabulary — CE only compares strings). Sessions, custom-domain cookies and
+   * API keys are never scope-checked: a person acting as themselves is not a
+   * delegation. Absent or empty means the rule needs no scope.
+   */
+  requiredScopes?: string[];
 }
+
+/** The shape of one scope string: `namespace:verb`, lowercase. */
+export const SCOPE_PATTERN = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/;
 
 /**
  * Configuration for rate_limit validator
