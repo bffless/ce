@@ -26,8 +26,10 @@ const NO_STORE = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 /**
  * RFC 7591 registration bodies carry metadata CE does not model (`logo_uri`,
  * `contacts`, `software_id`, …) — the global pipe's `forbidNonWhitelisted`
- * would 400 on every one of them (claude.ai's registration did). Unknown
- * fields are stripped, and what fails validation is answered in the RFC's
+ * would 400 on every one of them (claude.ai's registration did). Applied by
+ * the route itself to its untyped body (a parameter pipe cannot override a
+ * global one — Nest runs global pipes first): unknown fields are stripped,
+ * and what fails validation is answered in the RFC's
  * `{ error: invalid_client_metadata, error_description }` shape.
  */
 export function registerBodyPipe(): ValidationPipe {
@@ -59,10 +61,17 @@ export class OAuthController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Dynamic client registration (RFC 7591) — public clients' })
   async register(
-    @Body(registerBodyPipe()) dto: RegisterClientDto,
+    // Untyped on purpose: the app-wide ValidationPipe (`forbidNonWhitelisted`) skips a
+    // plain-object parameter, and global pipes run before any parameter pipe could
+    // relax them — so the lenient validation happens here, on the raw body.
+    @Body() body: unknown,
     @Res({ passthrough: true }) res: Response,
   ) {
     res.set(NO_STORE);
+    const dto = (await registerBodyPipe().transform(body, {
+      type: 'body',
+      metatype: RegisterClientDto,
+    })) as RegisterClientDto;
     return this.oauth.registerClient(dto);
   }
 

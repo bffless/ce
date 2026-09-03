@@ -238,6 +238,22 @@ checklist itself, it is the one file the review process treats as ground truth.
 **Learned from:** PR #734, 2026-09-03 — a `>>>>>>> 02d3564 (…)` trailer was left in this file,
 reformatted into a nested blockquote by prettier, and shipped through three review passes.
 
+### A parameter or route pipe cannot relax the app-wide `ValidationPipe`
+
+**Surface:** any route in `apps/backend/src/**` adding `@Body(new ValidationPipe(…))` or
+`@UsePipes()` to _loosen_ validation (accept unknown properties, skip a check) while
+`main.ts` keeps `useGlobalPipes(new ValidationPipe({ forbidNonWhitelisted: true, … }))`.
+**Check:** Nest chains pipes global → controller → method → parameter on the same value and
+the first to throw wins, so a local pipe can only add strictness. To relax, take the
+parameter untyped (the global pipe skips plain `Object` metatypes) and validate in the
+handler — and prove it with a supertest spec that installs the same global pipe as
+`main.ts` (`oauth-register-http.spec.ts` is the pattern). Only DTO decorator changes
+(`@IsIn` → `@IsString`) are shared between global and local pipes.
+**Why:** The fix silently no-ops for exactly the case it targets, and a unit test that calls
+the local pipe's `.transform()` directly gives false confidence.
+**Learned from:** PR #742, 2026-09-03 — `@Body(registerBodyPipe())` was meant to accept
+claude.ai's RFC 7591 metadata; the global pipe would still have 400'd first.
+
 ---
 
 ## Entry template
