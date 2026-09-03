@@ -23,6 +23,10 @@ COPY sites-available/bootstrap.conf.template /etc/nginx/sites-available/bootstra
 COPY nginx-reload-watcher.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/nginx-reload-watcher.sh
 
+# Boot guard: quarantines an invalid leftover site config so nginx still starts
+COPY nginx-boot-guard.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/nginx-boot-guard.sh
+
 # Copy main-config renderer (re-runnable: called by entrypoint and by the watcher)
 COPY render-main-conf.sh /usr/local/bin/render-main-conf.sh
 RUN chmod +x /usr/local/bin/render-main-conf.sh

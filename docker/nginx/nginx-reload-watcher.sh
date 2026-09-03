@@ -1,80 +1,96 @@
 #!/bin/sh
-echo "🔄 Starting nginx config watcher..."
+# Reloads nginx when the backend writes per-domain configs, certificates or the
+# bootstrap marker. Host-testable: nginx-reload-watcher.test.sh runs it with
+# shim inotifywait/nginx/render binaries on PATH and NGINX_WATCH_* overrides.
 
-while true; do
-  # /etc/nginx/bootstrap/ is a bind mount added by a later task (the backend's
-  # apply step writes instance.env there) and may not exist yet on an older
-  # install or before that mount is wired up. inotifywait fails immediately on
-  # a missing path; since stderr is discarded below, that failure would
-  # otherwise be silent, and — without the guard on the inotifywait exit
-  # status further down — the loop would hot-spin (re-arm the watch every
-  # iteration with no delay). mkdir -p makes the directory's existence a
-  # guaranteed invariant instead of an assumption, so the watch call itself
-  # never has a reason to fail on this path.
-  mkdir -p /etc/nginx/bootstrap
+WATCHED_PATHS="${NGINX_WATCH_PATHS:-/etc/nginx/sites-enabled/ /etc/nginx/ssl/ /etc/nginx/bootstrap/}"
+# How long the watched paths must stay quiet before a burst of writes is
+# treated as complete. The backend's startup regeneration rewrites every
+# domain config within a couple of seconds; reloading in the middle of that
+# burst loads a partial set of server blocks and — with the old one-event
+# design — nothing reloaded again afterwards (#747).
+QUIET_SECONDS="${NGINX_WATCH_QUIET_SECONDS:-2}"
+RENDER="${NGINX_WATCH_RENDER:-/usr/local/bin/render-main-conf.sh}"
+# Set by the test harness to stop after N reload cycles; unset = forever.
+MAX_CYCLES="${NGINX_WATCH_MAX_CYCLES:-}"
 
-  # Wait for file changes in sites-enabled (dynamic per-domain configs),
-  # ssl (certificates), or bootstrap (instance.env written by the backend on
-  # apply). moved_to is required, not optional: both the backend
-  # (writeInstanceConfig) and render-main-conf.sh write via rename-into-place
-  # for atomicity, which inotify reports as moved_to rather than
-  # create/modify on the final filename.
-  if ! inotifywait -e create,modify,delete,moved_to -q \
-    /etc/nginx/sites-enabled/ /etc/nginx/ssl/ /etc/nginx/bootstrap/ 2>/dev/null; then
-    # inotifywait couldn't watch one of the paths (e.g. still missing despite
-    # mkdir -p, or some other transient error). Back off before retrying so
-    # this can never become a tight, CPU-burning spin loop.
-    #
-    # Log it: a PERMANENT fault (broken bind mount, bad permissions) retries
-    # here forever, and inotifywait's own stderr is discarded above. Without
-    # this line the watcher would fail silently and invisibly — the old
-    # hot-spin was at least diagnosable from high CPU.
-    echo "⚠️  inotifywait failed (watched path missing or unreadable), retrying in 2s..." >&2
-    sleep 2
-    continue
-  fi
+# A digest of every watched file's name, size and mtime. Compared before and
+# after a reload cycle: any write that landed while this script was busy
+# rendering/validating/reloading (no inotifywait armed) shows up as a
+# different digest and gets its own cycle instead of being lost.
+fingerprint() {
+  # shellcheck disable=SC2086 # WATCHED_PATHS is a space-separated list on purpose
+  find $WATCHED_PATHS -maxdepth 1 -type f 2>/dev/null | sort | while IFS= read -r f; do
+    stat -c '%n %s %Y' "$f" 2>/dev/null
+  done | md5sum | cut -d' ' -f1
+}
 
-  echo "📝 Config/certificate/bootstrap change detected, waiting for write to complete..."
-  sleep 1
+# Keep re-arming the watch until the paths have been quiet for QUIET_SECONDS.
+# inotifywait exits 0 on an event (keep draining), 2 on timeout (quiet), 1 on
+# error (stop draining and let the cycle proceed rather than spin).
+drain_burst() {
+  # shellcheck disable=SC2086
+  while inotifywait -t "$QUIET_SECONDS" -e create,modify,delete,moved_to -q $WATCHED_PATHS 2>/dev/null; do :; done
+}
 
-  # Re-render main config first. This picks up bootstrap→applied transitions
-  # (new instance.env) and newly-written certs, and decides bootstrap vs.
-  # normal mode itself. A render failure must never fall through to
-  # validate/reload — that would risk reloading nginx onto a half-written or
-  # stale sites-available/main.conf. This script has no `set -e`, so a
-  # non-zero return here only trips the `if`, it can't abort the loop.
-  #
-  # Feedback-loop check: render-main-conf.sh writes sites-available/*.conf
-  # and /etc/nginx/cloudflare-realip.conf, neither of which is a watched
-  # path, so those writes cannot re-trigger this watcher. Its writes into a
-  # watched directory (ssl/) are all guarded by `[ ! -f ... ]` existence
-  # checks — the bootstrap self-signed cert (idempotent after the first run,
-  # which normally already happened via docker-entrypoint.sh before this
-  # watcher even starts) AND, in SSL_MODE=selfsigned, the fullchain.pem/
-  # privkey.pem materialization (guarded so it never overwrites a staged
-  # pasted cert already sitting there). So a render triggered by this watcher
-  # cannot itself produce another watched-path change: no infinite loop.
+# One render → validate → reload pass. Returns 0 when nginx was reloaded.
+reload_cycle() {
   echo "🔧 Re-rendering nginx config..."
-  if ! /usr/local/bin/render-main-conf.sh; then
-    # No backoff needed: the next statement after `continue` is another
-    # blocking inotifywait, so there is no spin to prevent here — unlike the
-    # inotifywait-failure branch above, which returns instantly.
+  # A render failure must never fall through to validate/reload — that would
+  # risk reloading nginx onto a half-written or stale sites-available/main.conf.
+  # render-main-conf.sh writes only unwatched paths (sites-available/, the
+  # realip include) plus existence-guarded certs, so it cannot re-trigger us.
+  if ! "$RENDER"; then
     echo "❌ Render failed, skipping reload"
-    continue
+    return 1
   fi
-
   echo "🔍 Validating nginx configuration..."
-
-  # Validate config before reloading
   if nginx -t 2>&1 | grep -q "successful"; then
     echo "✅ Config valid, reloading nginx..."
     nginx -s reload
     echo "🔄 Nginx reloaded successfully at $(date)"
-  else
-    echo "❌ Config invalid, skipping reload"
-    nginx -t
+    return 0
   fi
+  echo "❌ Config invalid, skipping reload"
+  nginx -t
+  return 1
+}
 
-  # Debounce - wait before watching again
-  sleep 2
+echo "🔄 Starting nginx config watcher..."
+cycles=0
+while true; do
+  # /etc/nginx/bootstrap/ is a bind mount the backend's apply step writes
+  # instance.env into; it may not exist yet on an older install. inotifywait
+  # fails immediately on a missing path, so make its existence an invariant.
+  mkdir -p /etc/nginx/bootstrap 2>/dev/null
+
+  # moved_to is required: the backend and render-main-conf.sh write via
+  # rename-into-place, which inotify reports as moved_to on the final name.
+  # shellcheck disable=SC2086
+  if ! inotifywait -e create,modify,delete,moved_to -q $WATCHED_PATHS 2>/dev/null; then
+    # A watched path is missing or unreadable. Back off so this can never
+    # become a CPU-burning spin, and say so — inotifywait's stderr is discarded.
+    echo "⚠️  inotifywait failed (watched path missing or unreadable), retrying in 2s..." >&2
+    sleep 2
+    continue
+  fi
+  echo "📝 Config/certificate/bootstrap change detected, waiting for the burst to settle..."
+
+  # Reload once per burst, and once more for anything that landed while we
+  # were busy — never leave nginx on a partial set of server blocks.
+  while :; do
+    drain_burst
+    before="$(fingerprint)"
+    reload_cycle
+    cycles=$((cycles + 1))
+    if [ "$(fingerprint)" = "$before" ]; then
+      break
+    fi
+    echo "📝 More changes landed during the reload, going again..."
+  done
+
+  if [ -n "$MAX_CYCLES" ] && [ "$cycles" -ge "$MAX_CYCLES" ]; then
+    echo "test harness: $cycles cycle(s) done, exiting"
+    exit 0
+  fi
 done
