@@ -22,11 +22,14 @@ export const appTokens = pgTable(
     tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
     /** `bfat_` + the first 7 hex chars, for display only. */
     tokenPrefix: varchar('token_prefix', { length: 16 }).notNull(),
+    // Both cascade: a token has no meaning once its member or its project is gone,
+    // and `deleteProject()` / `UsersService.delete()` enumerate no cleanup for it
+    // (ce#730 review finding 1 — a NO ACTION FK there fails the delete mid-way).
     userId: uuid('user_id')
-      .references(() => users.id)
+      .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
     projectId: uuid('project_id')
-      .references(() => projects.id)
+      .references(() => projects.id, { onDelete: 'cascade' })
       .notNull(),
     /** What the credential was delegated; the vocabulary is the app's. */
     scopes: jsonb('scopes').$type<string[]>().notNull().default([]),
