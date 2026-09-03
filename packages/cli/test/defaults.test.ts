@@ -24,6 +24,7 @@ describe('applyRuleDefaults', () => {
       internalRewrite: false,
       isEnabled: true,
       debugEnabled: false,
+      bypassVisibility: false,
       proxyType: 'pipeline',
       targetUrl: PIPELINE_TARGET_URL_DEFAULT,
     });

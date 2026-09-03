@@ -76,6 +76,9 @@ export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
             email: context.user.email,
             role: context.user.role,
             groups: context.user.groups ?? [],
+            // App tokens: what the credential was delegated (absent for sessions/keys).
+            ...(context.user.credential ? { credential: context.user.credential } : {}),
+            ...(context.user.scopes ? { scopes: context.user.scopes } : {}),
           }
         : undefined,
       request: {

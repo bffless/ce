@@ -7,6 +7,7 @@ import { SessionContainer } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';
 import { apiKeys, users } from '../db/schema';
 import { IS_PUBLIC_KEY } from './session-auth.guard';
+import { requestUserFromAppToken, resolveAppToken } from './app-token.util';
 
 /**
  * API Key authentication guard with session fallback
@@ -32,8 +33,16 @@ export class ApiKeyGuard implements CanActivate {
     const response = context.switchToHttp().getResponse();
     const apiKey = request.headers['x-api-key'];
 
-    // If no API key, fall back to session authentication
+    // If no API key, try a Bearer app token, then fall back to session authentication.
+    // A token is a project-fenced pseudo-key here (role pinned as keys are, never
+    // elevated) — see app-token.util `requestUserFromAppToken`. Any other bearer
+    // falls through exactly as before.
     if (!apiKey || typeof apiKey !== 'string') {
+      const resolved = await resolveAppToken(request.headers.authorization);
+      if (resolved) {
+        request.user = requestUserFromAppToken(resolved, { pinRoleLikeApiKey: true });
+        return true;
+      }
       return this.validateSession(request, response);
     }
 

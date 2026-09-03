@@ -144,6 +144,7 @@ export const RuleManifestSchema = z
     pipeline: PipelineConfigManifestSchema.optional(),
     isEnabled: z.boolean().optional(),
     debugEnabled: z.boolean().optional(),
+    bypassVisibility: z.boolean().optional(),
     description: z.string().optional(),
   })
   .strict()

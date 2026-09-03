@@ -9,6 +9,12 @@ export interface PipelineUser {
   role?: string;
   /** Group ids the user is a member of (strict membership). Absent only on pre-groups callers. */
   groups?: string[];
+  /** How the caller authenticated. Absent on pre-tokens callers (treated as a session). */
+  credential?: 'session' | 'api_key' | 'app_token' | 'custom_domain';
+  /** Present only for app tokens: what the credential was delegated. */
+  scopes?: string[];
+  /** Present only for app tokens: the project the token is bound to. */
+  tokenProjectId?: string;
 }
 
 /**

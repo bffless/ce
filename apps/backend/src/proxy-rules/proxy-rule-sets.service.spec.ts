@@ -153,6 +153,7 @@ describe('ProxyRuleSetsService', () => {
     isEnabled: true,
     description: null,
     debugEnabled: false,
+    bypassVisibility: false,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
     ...overrides,
@@ -237,6 +238,7 @@ describe('ProxyRuleSetsService', () => {
             steps: [{ name: 's', handlerType: 'data_query', config: {} }],
           },
           description: 'a rule',
+          bypassVisibility: true,
         }),
       ]);
 
@@ -244,7 +246,7 @@ describe('ProxyRuleSetsService', () => {
 
       expect(result.rules).toHaveLength(1);
       const rule = result.rules[0];
-      // Every RULE_KEY_ORDER key populated → all 18 present, in canonical order
+      // Every RULE_KEY_ORDER key populated → all 19 present, in canonical order
       expect(Object.keys(rule)).toEqual([...RULE_KEY_ORDER]);
       expect(rule.methods).toEqual(['GET', 'POST']);
       // Server-managed fields never appear

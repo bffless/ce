@@ -286,6 +286,7 @@ export class ProxyRulesService {
         emailHandlerConfig: dto.emailHandlerConfig ?? null,
         pipelineConfig: (dto.pipelineConfig as PipelineConfig) ?? null,
         isEnabled: dto.isEnabled ?? true,
+        bypassVisibility: dto.bypassVisibility ?? false,
         description: dto.description,
       })
       .returning();
@@ -431,6 +432,7 @@ export class ProxyRulesService {
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
     if (dto.debugEnabled !== undefined) updateData.debugEnabled = dto.debugEnabled;
+    if (dto.bypassVisibility !== undefined) updateData.bypassVisibility = dto.bypassVisibility;
 
     // Handle header config separately (needs encryption)
     if (dto.headerConfig !== undefined) {

@@ -11,6 +11,7 @@ export const RULE_DEFAULTS = {
   internalRewrite: false,
   isEnabled: true,
   debugEnabled: false,
+  bypassVisibility: false,
   proxyType: 'external_proxy' as ProxyType,
 } as const;
 

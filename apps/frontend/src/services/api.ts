@@ -165,6 +165,7 @@ export const api = createApi({
   tagTypes: [
     'Asset',
     'ApiKey',
+    'AppToken',
     'User',
     'Setup',
     'Project',

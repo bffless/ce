@@ -122,6 +122,7 @@ const dbRules = [
     pipelineConfig: null,
     isEnabled: true,
     debugEnabled: true,
+    bypassVisibility: true,
     description: 'external proxy with everything set',
   },
   {
@@ -170,6 +171,7 @@ const dbRules = [
     },
     isEnabled: true,
     debugEnabled: false,
+    bypassVisibility: false,
     description: null,
   },
   {
@@ -192,6 +194,7 @@ const dbRules = [
     pipelineConfig: null,
     isEnabled: false, // non-default false
     debugEnabled: false,
+    bypassVisibility: false,
     description: '', // empty string is a value, not an absence
   },
   {
@@ -218,6 +221,7 @@ const dbRules = [
     pipelineConfig: null,
     isEnabled: true,
     debugEnabled: false,
+    bypassVisibility: false,
     description: 'contact form',
   },
 ];
@@ -278,6 +282,7 @@ const expectedEnvelope: CliRuleSetExport = {
       proxyType: 'external_proxy',
       isEnabled: true,
       debugEnabled: true,
+      bypassVisibility: true,
       description: 'external proxy with everything set',
     },
     {

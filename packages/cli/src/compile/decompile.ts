@@ -40,6 +40,7 @@ const MANIFEST_KEY_ORDER = [
   'pipeline',
   'isEnabled',
   'debugEnabled',
+  'bypassVisibility',
   'description',
 ];
 

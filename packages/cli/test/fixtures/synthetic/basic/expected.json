@@ -37,7 +37,8 @@
         ]
       },
       "isEnabled": true,
-      "debugEnabled": false
+      "debugEnabled": false,
+      "bypassVisibility": false
     },
     {
       "pathPattern": "/api/items",
@@ -63,11 +64,15 @@
         ]
       },
       "isEnabled": true,
-      "debugEnabled": false
+      "debugEnabled": false,
+      "bypassVisibility": false
     },
     {
       "pathPattern": "/api/items/*",
-      "methods": ["GET", "HEAD"],
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
       "targetUrl": "http://localhost:3000/api/items",
       "stripPrefix": true,
       "order": 5,
@@ -78,6 +83,7 @@
       "proxyType": "external_proxy",
       "isEnabled": true,
       "debugEnabled": false,
+      "bypassVisibility": false,
       "description": "Catch-all read proxy for item subpaths."
     }
   ],
@@ -86,8 +92,15 @@
       "id": "11111111-2222-4333-8444-555555555555",
       "name": "items",
       "fields": [
-        { "name": "title", "type": "string", "required": true },
-        { "name": "body", "type": "string" }
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "body",
+          "type": "string"
+        }
       ]
     }
   ]

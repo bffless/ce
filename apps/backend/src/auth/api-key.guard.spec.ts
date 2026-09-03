@@ -17,6 +17,12 @@ jest.mock('../db/client', () => ({
 
 jest.mock('bcrypt');
 
+jest.mock('./app-token.util', () => ({
+  ...jest.requireActual('./app-token.util'),
+  resolveAppToken: jest.fn().mockResolvedValue(null),
+}));
+const { resolveAppToken: mockResolveAppToken } = jest.requireMock('./app-token.util');
+
 // Get the mocked db
 const mockDb = jest.requireMock('../db/client').db;
 
@@ -147,6 +153,60 @@ describe('ApiKeyGuard', () => {
       await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
         new UnauthorizedException('API key has expired'),
       );
+    });
+
+    describe('Bearer app tokens (project-fenced pseudo-keys)', () => {
+      const resolved = {
+        user: { id: 'user-9', email: 'm@example.com', role: 'admin' },
+        token: {
+          id: 'tok-1',
+          projectId: 'project-9',
+          scopes: ['workflow:read'],
+          kind: 'personal',
+          clientId: null,
+        },
+      };
+
+      it('activates on a valid app token, pinned like a project API key', async () => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+        mockRequest.headers.authorization = 'Bearer bfat_valid';
+        mockResolveAppToken.mockResolvedValueOnce(resolved);
+
+        await expect(guard.canActivate(mockExecutionContext)).resolves.toBe(true);
+        expect(mockRequest.user).toMatchObject({
+          id: 'user-9',
+          role: 'user', // admin pinned, as API keys are
+          apiKeyProjectId: 'project-9',
+          appTokenId: 'tok-1',
+          credential: { kind: 'app_token', scopes: ['workflow:read'] },
+        });
+      });
+
+      it('falls through to the session path when the bearer is not an app token', async () => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+        mockRequest.headers.authorization = 'Bearer eyJhbGciOi.jwt';
+        mockResolveAppToken.mockResolvedValueOnce(null);
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('Invalid or expired session'),
+        );
+        expect(mockResolveAppToken).toHaveBeenCalledWith('Bearer eyJhbGciOi.jwt');
+      });
+
+      it('prefers X-API-Key when both are present', async () => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+        mockRequest.headers['x-api-key'] = 'test-api-key';
+        mockRequest.headers.authorization = 'Bearer bfat_valid';
+        mockDb.from.mockResolvedValue([
+          { id: 'key-1', key: 'hashed-key', userId: 'user-1', projectId: 'p-1', expiresAt: null },
+        ]);
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+        mockDb.where.mockResolvedValue(undefined);
+
+        await expect(guard.canActivate(mockExecutionContext)).resolves.toBe(true);
+        expect(mockRequest.user.apiKeyId).toBe('key-1');
+        expect(mockResolveAppToken).not.toHaveBeenCalled();
+      });
     });
   });
 });

@@ -84,6 +84,7 @@ describe('sync-plan.util', () => {
         pipelineConfig: null,
         isEnabled: true,
         debugEnabled: false,
+        bypassVisibility: false,
         description: null,
       });
     });

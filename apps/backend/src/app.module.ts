@@ -10,6 +10,7 @@ import { SetupService } from './setup/setup.service';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
+import { AppTokensModule } from './app-tokens/app-tokens.module';
 import { StorageModule, StorageModuleConfig } from './storage/storage.module';
 import { CacheModule } from './storage/cache/cache.module';
 import { CacheConfig } from './storage/cache/cache.interface';
@@ -145,6 +146,7 @@ import { AppCatalogModule } from './app-catalog/app-catalog.module';
     }),
     UsersModule,
     ApiKeysModule,
+    AppTokensModule,
     AssetsModule,
     DeploymentsModule,
     RepoBrowserModule,

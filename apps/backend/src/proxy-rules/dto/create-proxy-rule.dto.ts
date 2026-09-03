@@ -538,6 +538,15 @@ export class CreateProxyRuleDto {
   @IsOptional()
   @IsBoolean()
   debugEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Serve this rule despite the deployment visibility gate (pre-credential endpoints such as OAuth discovery). The rule’s own validators still run.',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  bypassVisibility?: boolean;
 }
 
 /**

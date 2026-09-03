@@ -344,6 +344,15 @@ export const proxyRules = pgTable(
     debugEnabled: boolean('debug_enabled').notNull().default(false),
 
     /**
+     * Serve this rule despite the deployment's visibility gate — for endpoints a
+     * caller reaches before it has any credential (OAuth discovery under
+     * /.well-known, a webhook receiver). The rule's own validators still run.
+     * Ignored for internal_rewrite rules (they continue into PublicController,
+     * whose gate is unchanged).
+     */
+    bypassVisibility: boolean('bypass_visibility').notNull().default(false),
+
+    /**
      * Optional description for documentation purposes.
      */
     description: text('description'),

@@ -54,6 +54,7 @@ describe('ProxyRulesController', () => {
     isEnabled: true,
     description: null,
     debugEnabled: false,
+    bypassVisibility: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

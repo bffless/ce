@@ -6,10 +6,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, ArrowLeft, User as UserIcon } from 'lucide-react';
 import { GlobalApiKeysTab } from '@/components/settings/GlobalApiKeysTab';
+import { AppTokensTab } from '@/components/settings/AppTokensTab';
 import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
 import { MySitesSection } from '@/components/settings/MySitesSection';
 
-type TabValue = 'profile' | 'sites' | 'api-keys' | 'preferences';
+type TabValue = 'profile' | 'sites' | 'api-keys' | 'app-tokens' | 'preferences';
 
 /**
  * UserSettingsPage - User profile and settings
@@ -36,11 +37,13 @@ export function UserSettingsPage() {
   const currentTab: TabValue =
     tabParam === 'api-keys' && canAccessApiKeys
       ? 'api-keys'
-      : tabParam === 'preferences'
-        ? 'preferences'
-        : tabParam === 'sites'
-          ? 'sites'
-          : 'profile';
+      : tabParam === 'app-tokens'
+        ? 'app-tokens'
+        : tabParam === 'preferences'
+          ? 'preferences'
+          : tabParam === 'sites'
+            ? 'sites'
+            : 'profile';
 
   // Handler for tab changes
   const handleTabChange = (value: string) => {
@@ -89,6 +92,7 @@ export function UserSettingsPage() {
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="sites">My Sites</TabsTrigger>
           {canAccessApiKeys && <TabsTrigger value="api-keys">API Keys</TabsTrigger>}
+          <TabsTrigger value="app-tokens">App Tokens</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
 
@@ -139,6 +143,11 @@ export function UserSettingsPage() {
             <GlobalApiKeysTab />
           </TabsContent>
         )}
+
+        {/* App Tokens Tab — every member: a token never elevates */}
+        <TabsContent value="app-tokens" className="space-y-4">
+          <AppTokensTab />
+        </TabsContent>
 
         {/* Preferences Tab */}
         <TabsContent value="preferences" className="space-y-4">

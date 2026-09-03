@@ -33,6 +33,7 @@ function makeRuleRow(overrides: Partial<ProxyRule> = {}): Partial<ProxyRule> {
     pipelineConfig: { name: 'p', steps: [{ name: 's', handlerType: 'data_query', config: {} }] },
     isEnabled: true,
     debugEnabled: false,
+    bypassVisibility: true,
     description: 'a rule',
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
@@ -42,7 +43,7 @@ function makeRuleRow(overrides: Partial<ProxyRule> = {}): Partial<ProxyRule> {
 
 describe('export-format.util', () => {
   describe('key-order constants (ground truth: packages/cli/src/format/types.ts)', () => {
-    it('RULE_KEY_ORDER is the 18-key CLI order, including methods', () => {
+    it('RULE_KEY_ORDER is the 19-key CLI order, including methods and bypassVisibility', () => {
       expect([...RULE_KEY_ORDER]).toEqual([
         'pathPattern',
         'method',
@@ -61,6 +62,7 @@ describe('export-format.util', () => {
         'pipelineConfig',
         'isEnabled',
         'debugEnabled',
+        'bypassVisibility',
         'description',
       ]);
     });
@@ -173,7 +175,18 @@ describe('export-format.util', () => {
         'proxyType',
         'isEnabled',
         'debugEnabled',
+        'bypassVisibility',
       ]);
+    });
+
+    it('omits bypassVisibility when false (absent-means-default; older CLIs refuse unknown keys) and emits it when true', () => {
+      const off = serializeRuleForExport(makeRuleRow({ bypassVisibility: false }));
+      expect(off).not.toHaveProperty('bypassVisibility');
+      const on = serializeRuleForExport(makeRuleRow({ bypassVisibility: true }));
+      expect(on.bypassVisibility).toBe(true);
+      expect(Object.keys(on).indexOf('bypassVisibility')).toBe(
+        Object.keys(on).indexOf('debugEnabled') + 1,
+      );
     });
 
     it('passes nested objects through verbatim — a null inside a pipeline step config survives', () => {
