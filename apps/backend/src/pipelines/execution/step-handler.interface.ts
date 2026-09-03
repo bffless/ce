@@ -1141,3 +1141,56 @@ export type { HttpRequestHandlerConfig } from '../handlers/http-request.handler'
 
 // RemoteRequestHandlerConfig is defined in handlers/remote-request.handler.ts
 export type { RemoteRequestHandlerConfig } from '../handlers/remote-request.handler';
+
+/**
+ * `mcp_handler` — one step that answers as a stateless Streamable-HTTP MCP
+ * server described entirely by this config. Tools and `ui://` resources map
+ * to sibling rules of the same alias, invoked in-process as the caller with
+ * the sibling's own validators (`RuleInvokerService`). App-agnostic: the
+ * app's rule set is the server (apps#554 spec 10, D22).
+ */
+export interface McpToolDecl {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
+  /** MCP Apps: `['model']` (default) or `['app']` — app-only tools are callable but listed with `_meta.ui.visibility`. */
+  visibility?: Array<'model' | 'app'>;
+  _meta?: Record<string, unknown>;
+  /** The sibling rule that answers the tool; `arguments` go as the body (POST) or the query (GET). */
+  rule: { path: string; method?: 'GET' | 'POST' };
+}
+
+export interface McpResourceDecl {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+  rule: { path: string; method?: 'GET' };
+}
+
+export interface McpResourceTemplateDecl {
+  /** RFC 6570 level 1: `{var}` one segment, `{var+}` a slash-carrying tail. */
+  uriTemplate: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+  /** The sibling path with the same variables, e.g. `/w/{impl}/{path+}`. */
+  rule: { path: string };
+}
+
+export interface McpHandlerConfig extends BaseHandlerConfig {
+  serverInfo: { name: string; version: string };
+  instructions?: string;
+  /** Newest first; defaults to the three the MCP spec has published. */
+  protocolVersions?: string[];
+  tools: McpToolDecl[];
+  resources?: {
+    static?: McpResourceDecl[];
+    templates?: McpResourceTemplateDecl[];
+    /** A sibling whose JSON answer is the resources array (or `{ resources }`) — what the app enumerates. */
+    list?: { rule: { path: string; method?: 'GET' } };
+    /** `_meta.ui.csp` for every resource; entries may be `$app` (the request's origin) or `$storage` (the storage backend's). */
+    csp?: { connectDomains?: string[]; resourceDomains?: string[] };
+  };
+}

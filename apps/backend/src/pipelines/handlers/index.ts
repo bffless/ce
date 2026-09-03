@@ -28,3 +28,4 @@ export * from './data-upsert-many.handler';
 export * from './delay.handler';
 export * from './ffmpeg.handler';
 export * from './remote-request.handler';
+export * from './mcp.handler';

@@ -462,6 +462,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     vector_search: 'Vector Search',
     http_request: 'HTTP Request',
     remote_request: 'Remote Request',
+    mcp_handler: 'MCP Server',
     stripe_checkout: 'Stripe Checkout',
     stripe_webhook: 'Stripe Webhook',
     signed_url: 'Signed URL',
@@ -503,6 +504,8 @@ export function getHandlerDescription(type: HandlerType): string {
     http_request: 'Make an outbound HTTP request to an external URL',
     remote_request:
       'Call an admin-configured remote connection (Cloud Run etc.) with the platform identity',
+    mcp_handler:
+      'Answer as a stateless MCP server from this step’s config: tools and ui:// resources mapped to sibling rules, run as the caller. Authored as code (rules-as-code); no form editor',
     stripe_checkout: 'Create a Stripe Checkout Session and return the payment URL',
     stripe_webhook: 'Verify Stripe webhook signature and parse the event',
     signed_url: 'Generate a time-limited presigned URL for a file in storage',

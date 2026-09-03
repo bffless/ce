@@ -29,6 +29,11 @@ import {
   PipelineUser,
   PipelineDebugResult,
 } from '../pipelines/execution/pipeline-context.interface';
+import {
+  insufficientScopeHeader,
+  pipelineFromRule,
+  statusForPipelineError,
+} from './pipeline-from-rule';
 import { Pipeline, PipelineStep } from '../pipelines/types';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
@@ -1107,9 +1112,9 @@ export class ProxyMiddleware implements NestMiddleware {
     projectId: string,
     deployment?: { owner: string; repo: string; commitSha: string; alias?: string },
   ): Promise<void> {
-    const pipelineConfig = rule.pipelineConfig as PipelineConfig | null;
-
-    if (!pipelineConfig || !pipelineConfig.steps || pipelineConfig.steps.length === 0) {
+    // Built the way the in-process invoker builds a sibling (pipeline-from-rule.ts).
+    const pipeline = pipelineFromRule(rule, projectId);
+    if (!pipeline) {
       this.logger.error(`Pipeline rule ${rule.id} has no pipeline configuration`);
       res.status(500).json({
         error: 'Pipeline configuration missing',
@@ -1117,35 +1122,10 @@ export class ProxyMiddleware implements NestMiddleware {
       });
       return;
     }
-
-    // Build Pipeline object from proxy rule config
-    const pipeline: Pipeline & { steps: PipelineStep[] } = {
-      id: rule.id,
-      projectId: projectId,
-      name: pipelineConfig.name || `Pipeline for ${rule.pathPattern}`,
-      validators: pipelineConfig.validators || [],
-      steps: pipelineConfig.steps.map((step, index) => ({
-        id: step.id || `step-${index}`,
-        pipelineId: rule.id,
-        name: step.name || `step_${index + 1}`, // Fallback for legacy data without names
-        handlerType: step.handlerType,
-        config: step.config,
-        order: index,
-        isEnabled: step.isEnabled !== false,
-      })),
-      postSteps: pipelineConfig.postSteps?.map((step, index) => ({
-        id: step.id || `post-step-${index}`,
-        pipelineId: rule.id,
-        name: step.name || `post_step_${index + 1}`,
-        handlerType: step.handlerType,
-        config: step.config,
-        order: index,
-        isEnabled: step.isEnabled !== false,
-      })),
-    };
+    const pipelineConfig = rule.pipelineConfig as PipelineConfig;
 
     // Hoisted so the outer catch can attribute its failure log to the caller.
-    let user: { id: string; email?: string; role?: string } | undefined;
+    let user: PipelineUser | undefined;
 
     try {
       // If pipeline has file_upload_handler, parse multipart before executing
@@ -1226,26 +1206,12 @@ export class ProxyMiddleware implements NestMiddleware {
         res.status(result.response.status).send(result.response.body);
       } else {
         // Pipeline failed - map error codes to appropriate HTTP status codes
-        const errorCode = result.error?.code;
-        let statusCode = 500;
-        if (errorCode === 'VALIDATION_ERROR') {
-          statusCode = 400;
-        } else if (errorCode === 'AUTH_REQUIRED') {
-          statusCode = 401;
-        } else if (errorCode === 'AUTHORIZATION_ERROR') {
-          statusCode = 403;
-          // RFC 6750 §3.1: a token that lacks the rule's scope is told which one.
-          const details = result.error?.details as
-            | { code?: string; missingScopes?: string[] }
-            | undefined;
-          if (details?.code === 'insufficient_scope' && details.missingScopes?.length) {
-            res.setHeader(
-              'WWW-Authenticate',
-              `Bearer error="insufficient_scope", scope="${details.missingScopes.join(' ')}"`,
-            );
-          }
-        } else if (errorCode === 'RATE_LIMIT_EXCEEDED') {
-          statusCode = 429;
+        // (pipeline-from-rule.ts, shared with the in-process invoker)
+        const statusCode = statusForPipelineError(result.error?.code);
+        // RFC 6750 §3.1: a token that lacks the rule's scope is told which one.
+        const scopeHeader = insufficientScopeHeader(result.error);
+        if (scopeHeader) {
+          res.setHeader('WWW-Authenticate', scopeHeader);
         }
         if (logId) {
           res.setHeader(PIPELINE_LOG_ID_HEADER, logId);

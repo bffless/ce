@@ -55,6 +55,7 @@ import {
   DataUpsertManyHandler,
   DelayHandler,
   FfmpegHandler,
+  McpHandler,
 } from './handlers';
 import { FfmpegCapabilityService } from './ffmpeg/ffmpeg-capability.service';
 import { FfmpegRunnerService } from './ffmpeg/ffmpeg-runner.service';
@@ -178,6 +179,7 @@ import {
     DataUpsertManyHandler,
     DelayHandler,
     FfmpegHandler,
+    McpHandler,
     // Server-side video ops (Task 2/4/5) — consumed by FfmpegHandler, not otherwise registered
     FfmpegCapabilityService,
     FfmpegRunnerService,

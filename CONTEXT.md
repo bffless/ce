@@ -125,3 +125,13 @@ _Avoid_: "rate limit" (this is a concurrency ceiling, not a rate)
 **`remote_request`**:
 The pipeline step handler that calls a named Remote connection: resolves the connection, acquires its Fuse, sends the request with the connection's own identity, and always resolves with a step output (`ok`/`status`/`body`) rather than throwing on a non-2xx — a later step branches on the result.
 _Avoid_: "the remote handler" (ambiguous with the ffmpeg Remote executor)
+
+## Pipelines
+
+**MCP handler**:
+A pipeline step (`mcp_handler`) that answers as a stateless MCP server from its own config — tools and `ui://` resources mapped to Sibling rules of the same alias, executed in-process as the caller. App-agnostic: the app's rule set *is* the server; CE owns only the envelope. Not CE's own platform-admin MCP server (`@rekog/mcp-nest`, a different thing on a different path).
+_Avoid_: "the MCP server" (ambiguous with the platform-admin one), "MCP endpoint" (the app's rule, not the handler)
+
+**Sibling rule**:
+Another rule of the same alias's effective rule sets, invoked in-process by `RuleInvokerService` with the caller's identity and the sibling's own validators (`auth_required`, `requiredScopes`, `rate_limit`) — never the deployment visibility gate twice, and never nested (a sibling that is itself an MCP handler is refused). How an MCP tool runs, and the runtime cousin of the `alias://` idea (#698).
+_Avoid_: "internal call", "sub-pipeline"

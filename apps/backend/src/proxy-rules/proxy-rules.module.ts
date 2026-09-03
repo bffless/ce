@@ -7,6 +7,7 @@ import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service
 import { ProxyService } from './proxy.service';
 import { ProxyMiddleware } from './proxy.middleware';
 import { EmailFormHandlerService } from './email-form-handler.service';
+import { RuleInvokerService } from './rule-invoker.service';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { DomainsModule } from '../domains/domains.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
@@ -31,8 +32,15 @@ import { UserGroupsModule } from '../user-groups/user-groups.module';
     ProxyService,
     ProxyMiddleware,
     EmailFormHandlerService,
+    RuleInvokerService,
   ],
-  exports: [ProxyRulesService, ProxyRuleSetsService, ProxyRuleSetRevisionsService, ProxyService],
+  exports: [
+    ProxyRulesService,
+    ProxyRuleSetsService,
+    ProxyRuleSetRevisionsService,
+    ProxyService,
+    RuleInvokerService,
+  ],
 })
 export class ProxyRulesModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
