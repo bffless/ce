@@ -88,6 +88,7 @@ orphans them — the data isn't lost, it's just unreachable, which is worse beca
 looks fine until someone requests an old file.
 
 ### New `projectId`/`userId` foreign keys must cascade or join the manual delete-cleanup lists
+
 **Surface:** `apps/backend/src/db/schema/*.schema.ts` (any new `.references(() => projects.id)` /
 `.references(() => users.id)`), `apps/backend/src/projects/projects.service.ts` (`deleteProject`),
 `apps/backend/src/users/users.service.ts` (`delete`)
@@ -225,7 +226,17 @@ grant family) never fires if both requests see the pre-update row.
 **Learned from:** PR #734, 2026-09-03 — `exchangeCode` / `refresh` marked rows used with a
 plain `UPDATE … WHERE hash = ?`; fixed in the same PR with `… AND … IS NULL RETURNING`.
 
-> > > > > > > 02d3564 (fix(auth): OAuth review findings — www alternate on resource lookup, atomic single-use consume, member-only consent)
+### A leftover git conflict marker doesn't fail CI — check markdown/doc diffs by eye
+
+**Surface:** any file outside `src/**/*.{ts,tsx}` (prettier/tsc-checked) — markdown docs,
+`.claude/ce-pr-review-checklist.md`, `CONTEXT.md`, ADRs.
+**Check:** Does a diff to a non-code file contain a raw `<<<<<<<` / `=======` / `>>>>>>>`
+sequence, or its markdown-blockquote-mangled form (`> > > > > > > <hash> (<message>)`)?
+**Why:** `tsc --noEmit` and `pnpm test` don't touch markdown, so a botched rebase that leaves
+a conflict-marker remnant in a doc file is invisible to CI — and when the file is the review
+checklist itself, it is the one file the review process treats as ground truth.
+**Learned from:** PR #734, 2026-09-03 — a `>>>>>>> 02d3564 (…)` trailer was left in this file,
+reformatted into a nested blockquote by prettier, and shipped through three review passes.
 
 ---
 
