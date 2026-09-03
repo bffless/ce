@@ -88,6 +88,7 @@ orphans them — the data isn't lost, it's just unreachable, which is worse beca
 looks fine until someone requests an old file.
 
 ### New `projectId`/`userId` foreign keys must cascade or join the manual delete-cleanup lists
+
 **Surface:** `apps/backend/src/db/schema/*.schema.ts` (any new `.references(() => projects.id)` /
 `.references(() => users.id)`), `apps/backend/src/projects/projects.service.ts` (`deleteProject`),
 `apps/backend/src/users/users.service.ts` (`delete`)
@@ -199,6 +200,43 @@ resource sibling — with no error anywhere.
 **Learned from:** PR #731, 2026-09-03 — the invoker forwarded both headers unconditionally
 (flagged on four review passes); fixed in the same PR by lifting `ProxyService.buildHeaders`
 into the shared util and testing the four control cases.
+
+### Domain-scoped lookups must check the www/non-www alternate, everywhere
+
+**Surface:** any new code that resolves a hostname to a `domain_mappings` row —
+grep for `eq(domainMappings.domain, ...)` outside `apps/backend/src/domains/`.
+**Check:** Does the query also check the www/non-www alternate the way
+`VisibilityService` / `TrafficRoutingService` do, or does it assume the caller-supplied
+host exactly matches what is stored?
+**Why:** A primary domain with "Redirect to www" stores one variant; anything a client
+(not nginx) supplies the other variant to silently 400s / 404s for a supported setup.
+**Learned from:** PR #734, 2026-09-03 — `OAuthService.resolveResource` resolved the RFC 8707
+`resource` host with a bare `eq()`; fixed in the same PR (`resourceHosts()`).
+
+### One-time codes and tokens need an atomic "consume" UPDATE, not check-then-set
+
+**Surface:** any single-use credential (authorization codes, refresh-token rotation,
+one-time signup / reset tokens) implemented as a SELECT that checks a `usedAt` /
+`rotatedAt` column followed by a separate UPDATE.
+**Check:** Does the UPDATE carry the not-yet-used condition in its WHERE
+(`… AND used_at IS NULL`) and does the code act on the returned row count, or can two
+concurrent requests both pass the earlier SELECT?
+**Why:** OAuth 2.1's replay defence (a reused code / refresh token revokes the whole
+grant family) never fires if both requests see the pre-update row.
+**Learned from:** PR #734, 2026-09-03 — `exchangeCode` / `refresh` marked rows used with a
+plain `UPDATE … WHERE hash = ?`; fixed in the same PR with `… AND … IS NULL RETURNING`.
+
+### A leftover git conflict marker doesn't fail CI — check markdown/doc diffs by eye
+
+**Surface:** any file outside `src/**/*.{ts,tsx}` (prettier/tsc-checked) — markdown docs,
+`.claude/ce-pr-review-checklist.md`, `CONTEXT.md`, ADRs.
+**Check:** Does a diff to a non-code file contain a raw `<<<<<<<` / `=======` / `>>>>>>>`
+sequence, or its markdown-blockquote-mangled form (`> > > > > > > <hash> (<message>)`)?
+**Why:** `tsc --noEmit` and `pnpm test` don't touch markdown, so a botched rebase that leaves
+a conflict-marker remnant in a doc file is invisible to CI — and when the file is the review
+checklist itself, it is the one file the review process treats as ground truth.
+**Learned from:** PR #734, 2026-09-03 — a `>>>>>>> 02d3564 (…)` trailer was left in this file,
+reformatted into a nested blockquote by prettier, and shipped through three review passes.
 
 ---
 

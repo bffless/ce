@@ -21,6 +21,7 @@ import { UserGroupsPage } from '@/pages/UserGroupsPage';
 import { GroupDetailPage } from '@/pages/GroupDetailPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { UserSettingsPage } from '@/pages/UserSettingsPage';
+import { OAuthConsentPage } from '@/pages/OAuthConsentPage';
 import { AdminSettingsPage } from '@/pages/AdminSettingsPage';
 import { GeneralTab } from '@/pages/admin-settings/GeneralTab';
 import { AuthTab } from '@/pages/admin-settings/AuthTab';
@@ -100,6 +101,18 @@ function App() {
               element={
                 <ProtectedRoute>
                   <UserSettingsPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* OAuth 2.1 consent (ADR-0005): the authorize endpoint sends a signed-in
+              member here with a signed pending request; a signed-out one goes through
+              the login first (ProtectedRoute). */}
+            <Route
+              path="/oauth/consent"
+              element={
+                <ProtectedRoute>
+                  <OAuthConsentPage />
                 </ProtectedRoute>
               }
             />

@@ -3,6 +3,9 @@ export * from './users.schema';
 export * from './assets.schema';
 export * from './api-keys.schema';
 export * from './app-tokens.schema';
+export * from './oauth-clients.schema';
+export * from './oauth-authorization-codes.schema';
+export * from './oauth-refresh-tokens.schema';
 export * from './system-config.schema';
 export * from './proxy-rule-sets.schema'; // Must be before deployment-aliases and projects
 export * from './deployment-aliases.schema';
