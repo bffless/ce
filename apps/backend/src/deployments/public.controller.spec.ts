@@ -607,6 +607,87 @@ describe('PublicController', () => {
     });
   });
 
+  describe('serveSubdomainAlias (nginx wildcard catch-all)', () => {
+    const setupDbMock = (results: any[]) => {
+      let callIndex = 0;
+      mockDb.then.mockImplementation((resolve: any) => {
+        const result = results[callIndex] || [];
+        callIndex++;
+        return resolve(result);
+      });
+    };
+    const requestFor = (host: string) =>
+      ({
+        headers: { 'x-forwarded-host': host },
+        path: `/public/subdomain-alias/${host.split('.')[0]}/index.html`,
+        cookies: {},
+        query: {},
+      }) as unknown as Request;
+
+    it("serves a mapped host from its domain mapping — project, alias and path prefix — even though an alias of the subdomain's name exists elsewhere", async () => {
+      // The host's own server block was not loaded (a restart mid-regeneration), so the
+      // wildcard vhost sent the request here as subdomain-alias/workflow. Two projects
+      // hold an alias named "workflow"; the mapping says which one, and where its files are.
+      const mapping = {
+        id: 'map-1',
+        domain: 'workflow.example.com',
+        isActive: true,
+        projectId: mockPublicProject.id,
+        alias: 'workflow',
+        path: '/apps/workflow/dist',
+        domainType: 'subdomain',
+        wwwBehavior: null,
+      };
+      setupDbMock([[mapping]]);
+      (mockProjectsService as any).getProjectById = jest.fn().mockResolvedValue(mockPublicProject);
+      const getAsset = jest.fn().mockResolvedValue(mockAsset);
+      (controller as any).getAssetWithCache = getAsset;
+      const res = createMockResponse();
+
+      await controller.serveSubdomainAlias(
+        'workflow',
+        'index.html',
+        requestFor('workflow.example.com'),
+        res,
+      );
+
+      expect(mockDeploymentsService.resolveAlias).toHaveBeenCalledWith(mockRepository, 'workflow');
+      expect(getAsset).toHaveBeenCalledWith(
+        mockPublicProject.id,
+        mockCommitSha,
+        'apps/workflow/dist/index.html',
+      );
+      // the mapping answered; the alias-name lookup (a second SELECT) never ran
+      expect(mockDb.then).toHaveBeenCalledTimes(1);
+    });
+
+    it('serves a host with no mapping by alias name — the auto-preview subdomain case', async () => {
+      const aliasRecord = {
+        id: 'alias-1',
+        projectId: mockPublicProject.id,
+        alias: 'abc123-preview',
+        commitSha: mockCommitSha,
+        isAutoPreview: true,
+        basePath: null,
+      };
+      // no mapping for the host, no www variant, then the alias row
+      setupDbMock([[], [], [aliasRecord]]);
+      (mockProjectsService as any).getProjectById = jest.fn().mockResolvedValue(mockPublicProject);
+      const getAsset = jest.fn().mockResolvedValue(mockAsset);
+      (controller as any).getAssetWithCache = getAsset;
+      const res = createMockResponse();
+
+      await controller.serveSubdomainAlias(
+        'abc123-preview',
+        'index.html',
+        requestFor('abc123-preview.example.com'),
+        res,
+      );
+
+      expect(getAsset).toHaveBeenCalledWith(mockPublicProject.id, mockCommitSha, 'index.html');
+    });
+  });
+
   describe('MIME type detection', () => {
     const setupDbMock = (results: any[]) => {
       let callIndex = 0;
