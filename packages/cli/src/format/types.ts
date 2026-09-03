@@ -32,6 +32,8 @@ export interface ExportedRule {
   pipelineConfig?: PipelineConfig;
   isEnabled?: boolean;
   debugEnabled?: boolean;
+  /** Serve despite the deployment visibility gate (pre-credential endpoints). Only on the wire when true. */
+  bypassVisibility?: boolean;
   description?: string;
 }
 
@@ -44,5 +46,5 @@ export interface RuleSetExport {
   schemas?: ExportedSchema[];
 }
 
-export const RULE_KEY_ORDER = ['pathPattern','method','methods','targetUrl','stripPrefix','order','timeout','preserveHost','forwardCookies','headerConfig','authTransform','internalRewrite','proxyType','emailHandlerConfig','pipelineConfig','isEnabled','debugEnabled','description'] as const;
+export const RULE_KEY_ORDER = ['pathPattern','method','methods','targetUrl','stripPrefix','order','timeout','preserveHost','forwardCookies','headerConfig','authTransform','internalRewrite','proxyType','emailHandlerConfig','pipelineConfig','isEnabled','debugEnabled','bypassVisibility','description'] as const;
 export const ENVELOPE_KEY_ORDER = ['version','exportedAt','kind','ruleSet','rules','schemas'] as const;

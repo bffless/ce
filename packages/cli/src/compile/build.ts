@@ -395,6 +395,7 @@ export async function buildRuleSet(
 
     if (manifest.isEnabled !== undefined) partial.isEnabled = manifest.isEnabled;
     if (manifest.debugEnabled !== undefined) partial.debugEnabled = manifest.debugEnabled;
+    if (manifest.bypassVisibility !== undefined) partial.bypassVisibility = manifest.bypassVisibility;
     if (manifest.description !== undefined) partial.description = manifest.description;
 
     collectSecrets(partial, secrets);

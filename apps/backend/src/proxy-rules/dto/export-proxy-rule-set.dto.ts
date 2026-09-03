@@ -98,6 +98,11 @@ export class ExportedProxyRuleDto {
   @ApiPropertyOptional({ description: 'Whether debug logging is enabled' })
   debugEnabled?: boolean;
 
+  @ApiPropertyOptional({
+    description: 'Served despite the deployment visibility gate (only present when true)',
+  })
+  bypassVisibility?: boolean;
+
   @ApiPropertyOptional({ description: 'Optional description' })
   description?: string;
 }

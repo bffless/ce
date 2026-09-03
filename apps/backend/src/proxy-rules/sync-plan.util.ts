@@ -30,6 +30,7 @@ export interface SyncRuleInput {
   pipelineConfig?: PipelineConfig | null;
   isEnabled?: boolean | null;
   debugEnabled?: boolean | null;
+  bypassVisibility?: boolean | null;
   description?: string | null;
 }
 
@@ -67,6 +68,7 @@ export interface NormalizedSyncRule {
   pipelineConfig: PipelineConfig | null;
   isEnabled: boolean;
   debugEnabled: boolean;
+  bypassVisibility: boolean;
   description: string | null;
 }
 
@@ -216,6 +218,7 @@ function normalizeRule(rule: SyncRuleInput, fallbackOrder: number): NormalizedSy
     pipelineConfig: rule.pipelineConfig ?? null,
     isEnabled: rule.isEnabled ?? true,
     debugEnabled: rule.debugEnabled ?? false,
+    bypassVisibility: rule.bypassVisibility ?? false,
     description: rule.description ?? null,
   };
 }
@@ -337,6 +340,7 @@ const PLAIN_COMPARE_KEYS = [
   'pipelineConfig',
   'isEnabled',
   'debugEnabled',
+  'bypassVisibility',
   'description',
 ] as const satisfies readonly (keyof NormalizedSyncRule)[];
 

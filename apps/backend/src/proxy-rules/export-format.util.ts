@@ -24,7 +24,13 @@ import type { SchemaField, SchemaKind } from '../db/schema/pipeline-schemas.sche
  * `packages/cli/src/format/canonical.ts`.
  */
 
-/** Exported rule key order. 18 keys — `methods` inclusion is the #448 fix. */
+/**
+ * Exported rule key order. 19 keys — `methods` inclusion is the #448 fix;
+ * `bypassVisibility` (app tokens story) is emitted only when true, so every
+ * export a rule set produced before it existed is byte-identical, and an
+ * older CLI (whose canonicalizer refuses unknown keys) keeps working against
+ * a newer server for rules that never opted in.
+ */
 export const RULE_KEY_ORDER = [
   'pathPattern',
   'method',
@@ -43,6 +49,7 @@ export const RULE_KEY_ORDER = [
   'pipelineConfig',
   'isEnabled',
   'debugEnabled',
+  'bypassVisibility',
   'description',
 ] as const;
 
@@ -93,6 +100,8 @@ export interface ExportedRule {
   pipelineConfig?: PipelineConfig;
   isEnabled?: boolean;
   debugEnabled?: boolean;
+  /** Only present when true (see RULE_KEY_ORDER). */
+  bypassVisibility?: boolean;
   description?: string;
 }
 
@@ -148,6 +157,8 @@ export function serializeRuleForExport(rule: Partial<ProxyRule>): ExportedRule {
     // same as absent. Sync normalizes [] ≡ null, so exporting a literal []
     // would be permanent, push-unfixable drift for diff. Drop it.
     if (key === 'methods' && Array.isArray(value) && value.length === 0) continue;
+    // Absent-means-default: a false never reaches the wire (older CLIs refuse unknown keys).
+    if (key === 'bypassVisibility' && value === false) continue;
     out[key] = value;
   }
   return out as unknown as ExportedRule;

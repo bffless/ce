@@ -709,6 +709,7 @@ export class ProxyRuleSetsService {
         pipelineConfig: (rule.pipelineConfig as PipelineConfig) ?? null,
         isEnabled: rule.isEnabled ?? true,
         debugEnabled: rule.debugEnabled ?? false,
+        bypassVisibility: rule.bypassVisibility ?? false,
         description: rule.description,
       });
     }
@@ -1560,6 +1561,7 @@ export class ProxyRuleSetsService {
       pipelineConfig: rule.pipelineConfig,
       isEnabled: rule.isEnabled,
       debugEnabled: rule.debugEnabled,
+      bypassVisibility: rule.bypassVisibility,
       description: rule.description,
     };
   }

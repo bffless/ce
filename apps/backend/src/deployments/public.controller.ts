@@ -252,6 +252,15 @@ export class PublicController {
           return this.isImageRequest(req) ? this.serve404Image(res) : this.serve404Page(res);
         }
 
+        // An app token is bound to one project: valid, but not for here
+        if (this.tokenBoundElsewhere(user, project.id)) {
+          res.status(403).json({
+            message: 'Token is bound to another project',
+            code: 'TOKEN_PROJECT_MISMATCH',
+          });
+          return;
+        }
+
         // Authenticated - check role-based access
         const userRole = await this.permissionsService.getUserProjectRole(user.id, project.id);
 
@@ -525,6 +534,15 @@ export class PublicController {
             return res.redirect(302, authUrl);
           }
           return this.isImageRequest(req) ? this.serve404Image(res) : this.serve404Page(res);
+        }
+
+        // An app token is bound to one project: valid, but not for here
+        if (this.tokenBoundElsewhere(user, project.id)) {
+          res.status(403).json({
+            message: 'Token is bound to another project',
+            code: 'TOKEN_PROJECT_MISMATCH',
+          });
+          return;
         }
 
         // Authenticated - check role-based access
@@ -1087,6 +1105,19 @@ export class PublicController {
    * If valid and the token came from a query param, sets the __bffless_share cookie.
    * Returns true if the share token grants access, false otherwise.
    */
+  /** True when `user` authenticated with an app token bound to a different project. */
+  private tokenBoundElsewhere(
+    user: { credential?: { kind?: string; projectId?: string } } | undefined,
+    projectId: string,
+  ): boolean {
+    const credential = user?.credential;
+    return (
+      credential?.kind === 'app_token' &&
+      typeof credential.projectId === 'string' &&
+      credential.projectId !== projectId
+    );
+  }
+
   private async checkShareToken(
     req: Request,
     res: Response,

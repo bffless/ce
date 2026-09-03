@@ -33,6 +33,7 @@ import { Pipeline, PipelineStep } from '../pipelines/types';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
+import { resolveAppToken } from '../auth/app-token.util';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
@@ -583,6 +584,12 @@ export class ProxyMiddleware implements NestMiddleware {
       return 'allowed';
     }
 
+    // A rule that opted out of the gate serves pre-credential callers (OAuth
+    // discovery under /.well-known, a webhook receiver). Its own validators still run.
+    if (matchedRule?.bypassVisibility) {
+      return 'allowed';
+    }
+
     // Resolve access control - check domain mapping first (for subdomain requests),
     // then fall back to alias/project
     let accessControl: AccessControlInfo | null = null;
@@ -658,6 +665,18 @@ export class ProxyMiddleware implements NestMiddleware {
       return 'blocked';
     }
 
+    // An app token is bound to one project: valid, but not for here.
+    if (user.tokenProjectId && user.tokenProjectId !== project.id) {
+      this.logger.debug(
+        `Proxy blocked: app token bound to ${user.tokenProjectId}, not ${project.id}`,
+      );
+      res.status(403).json({
+        message: 'Token is bound to another project',
+        code: 'TOKEN_PROJECT_MISMATCH',
+      });
+      return 'blocked';
+    }
+
     // Authenticated - check role requirements
     const userRole = await this.permissionsService.getUserProjectRole(user.id, project.id);
 
@@ -705,6 +724,11 @@ export class ProxyMiddleware implements NestMiddleware {
 
     // API key header indicates programmatic access
     if (req.headers['x-api-key']) {
+      return true;
+    }
+
+    // A bearer credential (an app token) is never a browser: 401 JSON, not a redirect
+    if (req.headers.authorization) {
       return true;
     }
 
@@ -1263,6 +1287,16 @@ export class ProxyMiddleware implements NestMiddleware {
           statusCode = 401;
         } else if (errorCode === 'AUTHORIZATION_ERROR') {
           statusCode = 403;
+          // RFC 6750 §3.1: a token that lacks the rule's scope is told which one.
+          const details = result.error?.details as
+            | { code?: string; missingScopes?: string[] }
+            | undefined;
+          if (details?.code === 'insufficient_scope' && details.missingScopes?.length) {
+            res.setHeader(
+              'WWW-Authenticate',
+              `Bearer error="insufficient_scope", scope="${details.missingScopes.join(' ')}"`,
+            );
+          }
         } else if (errorCode === 'RATE_LIMIT_EXCEEDED') {
           statusCode = 429;
         }
@@ -1371,21 +1405,23 @@ export class ProxyMiddleware implements NestMiddleware {
    * Optionally extract user from session without failing if not authenticated.
    * Returns undefined if no session exists or user cannot be determined.
    */
-  private async getOptionalUser(
-    req: Request,
-    res: Response,
-  ): Promise<{ id: string; email?: string; role?: string } | undefined> {
+  private async getOptionalUser(req: Request, res: Response): Promise<PipelineUser | undefined> {
     try {
       // Check if user was already populated by a guard
       if ((req as any).user?.id) {
         this.logger.debug(`User already on request: ${(req as any).user.id}`);
-        return (req as any).user;
+        return this.fromGuardUser((req as any).user);
       }
 
       this.logger.debug(`Attempting to get session for ${req.path}`);
 
-      // Try SuperTokens session first
-      const session = await getSession(req, res, { sessionRequired: false });
+      // Try SuperTokens session first. Its own try/catch: a session lookup that
+      // throws (a malformed cookie, SuperTokens not initialised in a unit test)
+      // must not hide the credentials tried after it.
+      const session = await getSession(req, res, { sessionRequired: false }).catch((error) => {
+        this.logger.debug(`Session lookup failed: ${error}`);
+        return undefined;
+      });
       if (session) {
         const userId = session.getUserId();
         this.logger.debug(`SuperTokens session found for user: ${userId}`);
@@ -1397,20 +1433,35 @@ export class ProxyMiddleware implements NestMiddleware {
             id: userId,
             email: user.email || undefined,
             role: user.role || undefined,
+            credential: 'session',
           };
         }
+      }
+
+      // Try a Bearer app token: the member, narrowed by its scopes (app-token.util)
+      const resolved = await resolveAppToken(req.headers.authorization);
+      if (resolved) {
+        this.logger.debug(`User authenticated via app token: ${resolved.user.id}`);
+        return {
+          id: resolved.user.id,
+          email: resolved.user.email || undefined,
+          role: resolved.user.role || undefined,
+          credential: 'app_token',
+          scopes: resolved.token.scopes,
+          tokenProjectId: resolved.token.projectId,
+        };
       }
 
       // Try custom domain JWT auth (bffless_access cookie)
       const customDomainUser = await this.tryCustomDomainAuth(req);
       if (customDomainUser) {
-        return customDomainUser;
+        return { ...customDomainUser, credential: 'custom_domain' };
       }
 
       // Try API key authentication (X-API-Key header)
       const apiKeyUser = await this.tryApiKeyAuth(req);
       if (apiKeyUser) {
-        return apiKeyUser;
+        return { ...apiKeyUser, credential: 'api_key' };
       }
 
       this.logger.debug('No session, custom domain auth, or API key found');
@@ -1420,6 +1471,31 @@ export class ProxyMiddleware implements NestMiddleware {
       this.logger.warn(`Optional user extraction failed: ${error}`);
       return undefined;
     }
+  }
+
+  /**
+   * A user a guard already attached (`OptionalAuthGuard` shape), as the
+   * pipeline user: an app token's credential block becomes the flat
+   * `credential` / `scopes` / `tokenProjectId` the validators read.
+   */
+  private fromGuardUser(user: {
+    id: string;
+    email?: string;
+    role?: string;
+    apiKeyId?: string;
+    credential?: { kind: string; scopes?: string[]; projectId?: string };
+  }): PipelineUser {
+    const base: PipelineUser = { id: user.id, email: user.email, role: user.role };
+    if (user.credential?.kind === 'app_token') {
+      return {
+        ...base,
+        credential: 'app_token',
+        scopes: user.credential.scopes ?? [],
+        tokenProjectId: user.credential.projectId,
+      };
+    }
+    if (user.apiKeyId) return { ...base, credential: 'api_key' };
+    return base;
   }
 
   /**

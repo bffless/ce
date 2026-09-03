@@ -11,6 +11,12 @@ import { TrafficRoutingService } from '../domains/traffic-routing.service';
 import { UserGroupsService } from '../user-groups/user-groups.service';
 import { Request, Response, NextFunction } from 'express';
 
+jest.mock('../auth/app-token.util', () => ({
+  ...jest.requireActual('../auth/app-token.util'),
+  resolveAppToken: jest.fn().mockResolvedValue(null),
+}));
+const { resolveAppToken: mockResolveAppToken } = jest.requireMock('../auth/app-token.util');
+
 // Mock the database client
 jest.mock('../db/client', () => ({
   db: {
@@ -139,6 +145,7 @@ describe('ProxyMiddleware', () => {
     isEnabled: true,
     description: null,
     debugEnabled: false,
+    bypassVisibility: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -520,6 +527,107 @@ describe('ProxyMiddleware', () => {
       expect(result).toBe('blocked');
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({ message: 'try refresh token' });
+    });
+
+    it('lets a bypassVisibility rule through anonymously on a private deployment', async () => {
+      makePrivate();
+      const req = createMockRequest('/.well-known/oauth-protected-resource', {
+        accept: 'application/json',
+      });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({
+          pathPattern: '/.well-known/*',
+          proxyType: 'pipeline',
+          bypassVisibility: true,
+        }),
+      );
+
+      expect(result).toBe('allowed');
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('admits a Bearer app token on a private deployment as the member', async () => {
+      makePrivate();
+      mockResolveAppToken.mockResolvedValueOnce({
+        user: { id: 'user-9', email: 'm@example.com', role: 'user' },
+        token: {
+          id: 'tok-1',
+          projectId: project.id,
+          scopes: ['workflow:read'],
+          kind: 'personal',
+          clientId: null,
+        },
+      });
+      mockPermissionsService.getUserProjectRole.mockResolvedValueOnce('viewer');
+      const req = createMockRequest('/api/works', { authorization: 'Bearer bfat_x' });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/*', proxyType: 'pipeline' }),
+      );
+
+      expect(result).toBe('allowed');
+      expect(mockPermissionsService.getUserProjectRole).toHaveBeenCalledWith('user-9', project.id);
+    });
+
+    it('refuses a token bound to another project with 403 TOKEN_PROJECT_MISMATCH', async () => {
+      makePrivate();
+      mockResolveAppToken.mockResolvedValueOnce({
+        user: { id: 'user-9', email: 'm@example.com', role: 'user' },
+        token: {
+          id: 'tok-1',
+          projectId: 'other-project',
+          scopes: ['workflow:read'],
+          kind: 'personal',
+          clientId: null,
+        },
+      });
+      const req = createMockRequest('/api/works', { authorization: 'Bearer bfat_x' });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/*', proxyType: 'pipeline' }),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'TOKEN_PROJECT_MISMATCH' }),
+      );
+      expect(mockPermissionsService.getUserProjectRole).not.toHaveBeenCalled();
+    });
+
+    it('answers an anonymous bearer caller with 401 JSON, never a redirect', async () => {
+      makePrivate();
+      const req = createMockRequest('/api/works', { authorization: 'Bearer bfat_unknown' });
+      const res = createMockResponse();
+      (res as any).redirect = jest.fn();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/*', proxyType: 'pipeline' }),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect((res as any).redirect).not.toHaveBeenCalled();
     });
 
     it('does not exempt a non-proxy rule served from an auth path', async () => {
