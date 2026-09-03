@@ -15,6 +15,7 @@ const mockDb = jest.requireMock('../db/client').db;
 
 import {
   APP_TOKEN_PREFIX,
+  LAST_USED_MAP_MAX,
   LAST_USED_WRITE_INTERVAL_MS,
   bearerAppToken,
   hashToken,
@@ -144,6 +145,22 @@ describe('app-token.util', () => {
       await resolveAppToken('Bearer bfat_x');
       expect(mockDb.update).toHaveBeenCalledTimes(2);
       (Date.now as jest.Mock).mockRestore();
+    });
+
+    it('bounds the last-used throttle map', async () => {
+      for (let i = 0; i < LAST_USED_MAP_MAX + 5; i += 1) {
+        mockDb.limit
+          .mockResolvedValueOnce([tokenRow({ id: `tok-${i}` })])
+          .mockResolvedValueOnce([userRow()]);
+        await resolveAppToken('Bearer bfat_x');
+      }
+      // The first token's entry was evicted, so its next use writes again.
+      const writes = mockDb.update.mock.calls.length;
+      mockDb.limit
+        .mockResolvedValueOnce([tokenRow({ id: 'tok-0' })])
+        .mockResolvedValueOnce([userRow()]);
+      await resolveAppToken('Bearer bfat_x');
+      expect(mockDb.update.mock.calls.length).toBe(writes + 1);
     });
 
     it('never throws on a db failure', async () => {
