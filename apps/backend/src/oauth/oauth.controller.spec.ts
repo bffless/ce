@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Request, Response } from 'express';
-import { OAuthController } from './oauth.controller';
+import { OAuthController, registerBodyPipe } from './oauth.controller';
+import { RegisterClientDto } from './oauth.dto';
 import { OAuthMetadataController } from './oauth-metadata.controller';
 import { OAuthError } from './oauth.errors';
 import { PUBLIC_PROJECT_ACCESS_KEY } from '../auth/decorators/public-project-access.decorator';
@@ -33,6 +34,35 @@ function make() {
   };
 }
 const res = () => ({ redirect: jest.fn(), set: jest.fn() }) as unknown as Response;
+
+describe('registerBodyPipe (RFC 7591 leniency)', () => {
+  const meta = { type: 'body' as const, metatype: RegisterClientDto };
+  it('strips metadata CE does not model instead of refusing it — what claude.ai sends', async () => {
+    const dto = (await registerBodyPipe().transform(
+      {
+        client_name: 'Claude',
+        client_uri: 'https://claude.ai',
+        redirect_uris: ['https://claude.ai/api/mcp/auth_callback'],
+        logo_uri: 'https://claude.ai/logo.png',
+        contacts: ['support@anthropic.com'],
+        software_id: 'claude',
+        token_endpoint_auth_method: 'client_secret_post',
+      },
+      meta,
+    )) as Record<string, unknown>;
+    expect(dto).toMatchObject({
+      client_name: 'Claude',
+      token_endpoint_auth_method: 'client_secret_post',
+    });
+    expect(dto).not.toHaveProperty('logo_uri');
+    expect(dto).not.toHaveProperty('contacts');
+  });
+  it('answers what fails validation in the RFC error shape', async () => {
+    await expect(registerBodyPipe().transform({ client_name: 42 }, meta)).rejects.toMatchObject({
+      error: 'invalid_client_metadata',
+    });
+  });
+});
 
 describe('OAuth controllers', () => {
   beforeEach(() => jest.clearAllMocks());

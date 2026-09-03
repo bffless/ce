@@ -142,17 +142,29 @@ describe('OAuthService', () => {
         redirectUris: ['https://claude.ai/cb', 'http://localhost:8080/cb'],
       });
     });
-    it('refuses a plain-http remote redirect and a confidential client', async () => {
+    it('refuses a plain-http remote redirect', async () => {
       const { service } = make();
       await expect(
         service.registerClient({ redirect_uris: ['http://evil.example/cb'] }),
       ).rejects.toThrow(OAuthError);
-      await expect(
-        service.registerClient({
-          redirect_uris: ['https://x/cb'],
-          token_endpoint_auth_method: 'client_secret_basic' as never,
-        }),
-      ).rejects.toMatchObject({ error: 'invalid_client_metadata' });
+    });
+    it('registers a client that asked for a secret as a public client and says so (RFC 7591 §3.2.1); drops unsupported grant types', async () => {
+      const { service } = make();
+      mockDb.returning.mockResolvedValueOnce([
+        {
+          ...client,
+          redirectUris: ['https://x/cb'],
+          grantTypes: ['authorization_code'],
+          createdAt: new Date(),
+        },
+      ]);
+      const out = await service.registerClient({
+        redirect_uris: ['https://x/cb'],
+        token_endpoint_auth_method: 'client_secret_basic',
+        grant_types: ['authorization_code', 'implicit'],
+      });
+      expect(out.token_endpoint_auth_method).toBe('none');
+      expect(mockDb.values.mock.calls[0][0]).toMatchObject({ grantTypes: ['authorization_code'] });
     });
   });
 

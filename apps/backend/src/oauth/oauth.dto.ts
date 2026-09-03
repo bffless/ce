@@ -3,7 +3,6 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
-  IsIn,
   IsOptional,
   IsString,
   IsUrl,
@@ -24,21 +23,23 @@ export class RegisterClientDto {
   @MaxLength(255)
   client_name?: string;
 
+  /** Whatever the client asks for, it is registered as a public client (`none`) — RFC 7591 §3.2.1 lets the server substitute and the response says so. */
   @ApiPropertyOptional({ default: 'none' })
   @IsOptional()
-  @IsIn(['none'])
-  token_endpoint_auth_method?: 'none';
+  @IsString()
+  token_endpoint_auth_method?: string;
 
+  /** The supported subset is registered; unsupported entries are dropped, not refused. */
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
-  @IsIn(['authorization_code', 'refresh_token'], { each: true })
+  @IsString({ each: true })
   grant_types?: string[];
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
-  @IsIn(['code'], { each: true })
+  @IsString({ each: true })
   response_types?: string[];
 
   @ApiPropertyOptional()
