@@ -106,6 +106,20 @@ export class PublicController {
       `[serveSubdomainAlias] Request: aliasName=${aliasName}, filePath=${filePath}`,
     );
 
+    // A host that has a domain mapping is that mapping's — its project, its
+    // alias, its path prefix, its access control — even when nginx's wildcard
+    // catch-all intercepted the request because the host's own server block is
+    // not loaded (not written yet after a restart, or a reload that did not
+    // take). The alias-name lookup below is for hosts with no mapping: the
+    // auto-generated preview subdomains. Consulting it first for a mapped host
+    // served files from an alias that merely shares the subdomain's name — in
+    // whichever project holds one — without the mapping's path prefix.
+    const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+    if (forwardedHost) {
+      const served = await this.serveDomainMappingFallback(forwardedHost, filePath, req, res);
+      if (served) return;
+    }
+
     // Look up alias by name across all projects
     const [aliasRecord] = await db
       .select()
@@ -114,19 +128,9 @@ export class PublicController {
       .limit(1);
 
     if (!aliasRecord) {
-      // Fallback: check if the original host matches a domain mapping.
-      // This handles the case where nginx's wildcard catch-all intercepts requests
-      // that should have gone to domain-specific server blocks (e.g., when the
-      // domain config hasn't been loaded by nginx yet, or after a restart).
       this.logger.debug(
-        `[serveSubdomainAlias] Alias '${aliasName}' not found, checking domain mapping fallback`,
+        `[serveSubdomainAlias] Alias '${aliasName}' not found and no domain mapping for the host`,
       );
-      const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
-      if (forwardedHost) {
-        const served = await this.serveDomainMappingFallback(forwardedHost, filePath, req, res);
-        if (served) return;
-      }
-
       return this.serve404Page(res);
     }
 
