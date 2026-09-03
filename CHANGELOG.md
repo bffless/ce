@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.46](https://github.com/bffless/ce/compare/v0.4.45...v0.4.46) (2026-09-03)
+
+
+### Fixed
+
+* **auth:** the OAuth issuer is the admin host (ADMIN_DOMAIN or OAUTH_ISSUER), never FRONTEND_URL ([#739](https://github.com/bffless/ce/issues/739)) ([53d716f](https://github.com/bffless/ce/commit/53d716f9b3974d3c0968e7c7b536c13911dda97c))
+
 ## [0.4.45](https://github.com/bffless/ce/compare/v0.4.44...v0.4.45) (2026-09-03)
 
 ### Added
