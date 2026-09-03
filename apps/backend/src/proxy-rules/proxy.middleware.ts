@@ -13,7 +13,6 @@ import {
   users,
   apiKeys,
   aliasProxyRuleSets,
-  projectDefaultProxyRuleSets,
 } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
@@ -29,7 +28,11 @@ import {
   PipelineUser,
   PipelineDebugResult,
 } from '../pipelines/execution/pipeline-context.interface';
-import { Pipeline, PipelineStep } from '../pipelines/types';
+import {
+  insufficientScopeHeader,
+  pipelineFromRule,
+  statusForPipelineError,
+} from './pipeline-from-rule';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
@@ -38,7 +41,12 @@ import { VisibilityService, AccessControlInfo } from '../domains/visibility.serv
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
 import { UserGroupsService } from '../user-groups/user-groups.service';
-import { matchesMethod } from './method-match';
+import {
+  findMatchingRule as findMatchingRuleShared,
+  matchesPattern as matchesPatternShared,
+  resolveProjectDefaultRuleSetIds as resolveProjectDefaultRuleSetIdsShared,
+  resolveRuleSetIdsForAlias as resolveRuleSetIdsForAliasShared,
+} from './rule-resolution';
 
 interface ParsedPublicPath {
   owner: string;
@@ -1015,58 +1023,19 @@ export class ProxyMiddleware implements NestMiddleware {
     };
   }
 
-  /**
-   * Resolve rule set IDs for an alias.
-   * Checks join table first, falls back to legacy proxyRuleSetId column.
-   */
-  private async resolveRuleSetIdsForAlias(
+  /** Rule resolution lives in `rule-resolution.ts`, shared with the in-process invoker. */
+  private resolveRuleSetIdsForAlias(
     aliasId: string,
     legacyProxyRuleSetId: string | null,
   ): Promise<string[]> {
-    // Check join table first
-    const joinRows = await db
-      .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
-      .from(aliasProxyRuleSets)
-      .where(eq(aliasProxyRuleSets.aliasId, aliasId))
-      .orderBy(asc(aliasProxyRuleSets.order));
-
-    if (joinRows.length > 0) {
-      return joinRows.map((r) => r.proxyRuleSetId);
-    }
-
-    // Fall back to legacy column
-    if (legacyProxyRuleSetId) {
-      return [legacyProxyRuleSetId];
-    }
-
-    return [];
+    return resolveRuleSetIdsForAliasShared(aliasId, legacyProxyRuleSetId);
   }
 
-  /**
-   * Resolve default rule set IDs for a project.
-   * Checks join table first, falls back to legacy defaultProxyRuleSetId column.
-   */
-  private async resolveProjectDefaultRuleSetIds(
+  private resolveProjectDefaultRuleSetIds(
     projectId: string,
     legacyDefaultProxyRuleSetId: string | null,
   ): Promise<string[]> {
-    // Check join table first
-    const joinRows = await db
-      .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
-      .from(projectDefaultProxyRuleSets)
-      .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
-      .orderBy(asc(projectDefaultProxyRuleSets.order));
-
-    if (joinRows.length > 0) {
-      return joinRows.map((r) => r.proxyRuleSetId);
-    }
-
-    // Fall back to legacy column
-    if (legacyDefaultProxyRuleSetId) {
-      return [legacyDefaultProxyRuleSetId];
-    }
-
-    return [];
+    return resolveProjectDefaultRuleSetIdsShared(projectId, legacyDefaultProxyRuleSetId);
   }
 
   /**
@@ -1127,26 +1096,7 @@ export class ProxyMiddleware implements NestMiddleware {
    * - If rule.method is set, it must match the request method (case-insensitive)
    */
   private findMatchingRule(rules: ProxyRule[], subpath: string, method?: string): ProxyRule | null {
-    const requestMethod = method?.toUpperCase();
-
-    for (const rule of rules) {
-      if (!rule.isEnabled) {
-        continue;
-      }
-
-      // Check path pattern first
-      if (!this.matchesPattern(rule.pathPattern, subpath)) {
-        continue;
-      }
-
-      // Check method(s): methods[] wins, else single method, else any (case-insensitive)
-      if (!matchesMethod(rule, requestMethod)) {
-        continue;
-      }
-
-      return rule;
-    }
-    return null;
+    return findMatchingRuleShared(rules, subpath, method);
   }
 
   /**
@@ -1160,9 +1110,9 @@ export class ProxyMiddleware implements NestMiddleware {
     projectId: string,
     deployment?: { owner: string; repo: string; commitSha: string; alias?: string },
   ): Promise<void> {
-    const pipelineConfig = rule.pipelineConfig as PipelineConfig | null;
-
-    if (!pipelineConfig || !pipelineConfig.steps || pipelineConfig.steps.length === 0) {
+    // Built the way the in-process invoker builds a sibling (pipeline-from-rule.ts).
+    const pipeline = pipelineFromRule(rule, projectId);
+    if (!pipeline) {
       this.logger.error(`Pipeline rule ${rule.id} has no pipeline configuration`);
       res.status(500).json({
         error: 'Pipeline configuration missing',
@@ -1170,35 +1120,10 @@ export class ProxyMiddleware implements NestMiddleware {
       });
       return;
     }
-
-    // Build Pipeline object from proxy rule config
-    const pipeline: Pipeline & { steps: PipelineStep[] } = {
-      id: rule.id,
-      projectId: projectId,
-      name: pipelineConfig.name || `Pipeline for ${rule.pathPattern}`,
-      validators: pipelineConfig.validators || [],
-      steps: pipelineConfig.steps.map((step, index) => ({
-        id: step.id || `step-${index}`,
-        pipelineId: rule.id,
-        name: step.name || `step_${index + 1}`, // Fallback for legacy data without names
-        handlerType: step.handlerType,
-        config: step.config,
-        order: index,
-        isEnabled: step.isEnabled !== false,
-      })),
-      postSteps: pipelineConfig.postSteps?.map((step, index) => ({
-        id: step.id || `post-step-${index}`,
-        pipelineId: rule.id,
-        name: step.name || `post_step_${index + 1}`,
-        handlerType: step.handlerType,
-        config: step.config,
-        order: index,
-        isEnabled: step.isEnabled !== false,
-      })),
-    };
+    const pipelineConfig = rule.pipelineConfig as PipelineConfig;
 
     // Hoisted so the outer catch can attribute its failure log to the caller.
-    let user: { id: string; email?: string; role?: string } | undefined;
+    let user: PipelineUser | undefined;
 
     try {
       // If pipeline has file_upload_handler, parse multipart before executing
@@ -1279,26 +1204,12 @@ export class ProxyMiddleware implements NestMiddleware {
         res.status(result.response.status).send(result.response.body);
       } else {
         // Pipeline failed - map error codes to appropriate HTTP status codes
-        const errorCode = result.error?.code;
-        let statusCode = 500;
-        if (errorCode === 'VALIDATION_ERROR') {
-          statusCode = 400;
-        } else if (errorCode === 'AUTH_REQUIRED') {
-          statusCode = 401;
-        } else if (errorCode === 'AUTHORIZATION_ERROR') {
-          statusCode = 403;
-          // RFC 6750 §3.1: a token that lacks the rule's scope is told which one.
-          const details = result.error?.details as
-            | { code?: string; missingScopes?: string[] }
-            | undefined;
-          if (details?.code === 'insufficient_scope' && details.missingScopes?.length) {
-            res.setHeader(
-              'WWW-Authenticate',
-              `Bearer error="insufficient_scope", scope="${details.missingScopes.join(' ')}"`,
-            );
-          }
-        } else if (errorCode === 'RATE_LIMIT_EXCEEDED') {
-          statusCode = 429;
+        // (pipeline-from-rule.ts, shared with the in-process invoker)
+        const statusCode = statusForPipelineError(result.error?.code);
+        // RFC 6750 §3.1: a token that lacks the rule's scope is told which one.
+        const scopeHeader = insufficientScopeHeader(result.error);
+        if (scopeHeader) {
+          res.setHeader('WWW-Authenticate', scopeHeader);
         }
         if (logId) {
           res.setHeader(PIPELINE_LOG_ID_HEADER, logId);
@@ -1671,19 +1582,6 @@ export class ProxyMiddleware implements NestMiddleware {
    * - Middle:  '/api/uploads/feedback-*' matches '/api/uploads/feedback-screenshots'
    */
   private matchesPattern(pattern: string, path: string): boolean {
-    if (pattern === path) return true;
-    if (!pattern.includes('*')) return false;
-
-    // Note: '/prefix/*' matches '/prefix/' and '/prefix/<sub>' but NOT the bare
-    // '/prefix' — the wildcard requires a path separator. This lets a same-named
-    // client-side SPA route (e.g. bare '/auth') fall through to the SPA fallback
-    // while subpaths (e.g. '/auth/signin') are still proxied. To also match the
-    // bare prefix, use '/prefix*' or add an explicit '/prefix' rule.
-
-    // Glob → regex: escape regex metacharacters (but not '*'), then replace
-    // '*' with '.*' and anchor. Handles trailing, leading, and middle wildcards.
-    const regexSource =
-      '^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
-    return new RegExp(regexSource).test(path);
+    return matchesPatternShared(pattern, path);
   }
 }

@@ -112,6 +112,7 @@ const HANDLER_GROUPS: { label: string; types: HandlerType[] }[] = [
       'remote_request',
       'xml_feed_parse',
       'delay',
+      'mcp_handler',
     ],
   },
 ];

@@ -1,10 +1,10 @@
 # CE Domain Glossary
 
-The ubiquitous language for Community Edition. A glossary, not a spec — define what terms *mean*, not how they're implemented.
+The ubiquitous language for Community Edition. A glossary, not a spec — define what terms _mean_, not how they're implemented.
 
 ## Authentication
 
-The most-confused area is *which auth path a deployed app should use*, which is decided entirely by *which kind of domain the app is served from*.
+The most-confused area is _which auth path a deployed app should use_, which is decided entirely by _which kind of domain the app is served from_.
 
 **Primary domain**:
 The single domain SuperTokens is configured against. Its auth cookies (`sAccessToken`) are valid on it and all of its subdomains.
@@ -13,7 +13,7 @@ The single domain SuperTokens is configured against. Its auth cookies (`sAccessT
 A host under the primary domain (e.g. `handoff.j5s.dev` under `j5s.dev`). Shares the primary domain's SuperTokens cookies — so apps here authenticate via the **SuperTokens session path**, not the relay.
 
 **Custom domain**:
-A cross-origin host that is *not* under the primary domain (e.g. `app.acme.com`, or **`localhost`** during local/automated testing). SuperTokens cookies cannot reach it, so apps here authenticate via the **admin login relay**, which mints its own cookie. `localhost` qualifying as a custom domain is why a local headless browser (e.g. Sandcastle's Playwright) gets a `bffless_access` cookie, never an `sAccessToken`.
+A cross-origin host that is _not_ under the primary domain (e.g. `app.acme.com`, or **`localhost`** during local/automated testing). SuperTokens cookies cannot reach it, so apps here authenticate via the **admin login relay**, which mints its own cookie. `localhost` qualifying as a custom domain is why a local headless browser (e.g. Sandcastle's Playwright) gets a `bffless_access` cookie, never an `sAccessToken`.
 
 **SuperTokens session path**:
 Authentication via the `/api/auth/*` reverse proxy straight to SuperTokens. The correct path for the primary domain and its subdomains. Yields an `sAccessToken`.
@@ -21,7 +21,7 @@ _Avoid_: "the api/auth proxy"
 
 **Admin login relay**:
 Authentication via the `/_bffless/auth/*` endpoints, intended **only for custom (cross-origin) domains** where SuperTokens cookies can't reach. It mints a `bffless_access` cookie and adds custom-domain-specific behaviour on top. A common mistake (especially by code-gen) is defaulting to the relay without checking which domain the app sits on.
-_Avoid_: "the _bffless endpoint", "bffless auth"
+_Avoid_: "the \_bffless endpoint", "bffless auth"
 
 **sAccessToken**:
 The SuperTokens session cookie. Valid on the primary domain and its subdomains.
@@ -34,7 +34,7 @@ An `X-API-Key` credential scoped to one project, authenticating the data layer (
 _Avoid_: "the project key", "access key"
 
 **App token**:
-A member-bound, project-bound, scoped bearer credential (`Authorization: Bearer bfat_…`) the member mints in *Settings → App Tokens*, or an OAuth client obtains on the member's behalf. Wherever a session is accepted for content or pipelines — the deployment visibility gate, `auth_required` — the token *is* the member, narrowed by its scopes: effective permission is what the member may do ∩ what the token was granted, so a token never elevates. On the admin API it behaves as a project-scoped API key does (project-fenced, role pinned). Not an API key: an API key is pinned to role `user` and bound to no person.
+A member-bound, project-bound, scoped bearer credential (`Authorization: Bearer bfat_…`) the member mints in _Settings → App Tokens_, or an OAuth client obtains on the member's behalf. Wherever a session is accepted for content or pipelines — the deployment visibility gate, `auth_required` — the token _is_ the member, narrowed by its scopes: effective permission is what the member may do ∩ what the token was granted, so a token never elevates. On the admin API it behaves as a project-scoped API key does (project-fenced, role pinned). Not an API key: an API key is pinned to role `user` and bound to no person.
 _Avoid_: "personal access token", "PAT", "bearer" alone (a SuperTokens JWT is also a bearer)
 
 **Scope**:
@@ -89,7 +89,7 @@ ffmpeg spawned by the CE backend on the instance itself, subject to that box's m
 _Avoid_: "server" alone, "in-process"
 
 **Remote**:
-ffmpeg run by a Worker that CE calls over HTTPS with signed storage URLs, so the bytes never pass through the instance. Cloud Run is the *reference deployment*, not the name — any host running the Worker image is Remote.
+ffmpeg run by a Worker that CE calls over HTTPS with signed storage URLs, so the bytes never pass through the instance. Cloud Run is the _reference deployment_, not the name — any host running the Worker image is Remote.
 _Avoid_: "cloud run mode", "cloud"
 
 **Server video ops**:
@@ -125,3 +125,13 @@ _Avoid_: "rate limit" (this is a concurrency ceiling, not a rate)
 **`remote_request`**:
 The pipeline step handler that calls a named Remote connection: resolves the connection, acquires its Fuse, sends the request with the connection's own identity, and always resolves with a step output (`ok`/`status`/`body`) rather than throwing on a non-2xx — a later step branches on the result.
 _Avoid_: "the remote handler" (ambiguous with the ffmpeg Remote executor)
+
+## Pipelines
+
+**MCP handler**:
+A pipeline step (`mcp_handler`) that answers as a stateless MCP server from its own config — tools and `ui://` resources mapped to Sibling rules of the same alias, executed in-process as the caller. App-agnostic: the app's rule set _is_ the server; CE owns only the envelope. Not CE's own platform-admin MCP server (`@rekog/mcp-nest`, a different thing on a different path).
+_Avoid_: "the MCP server" (ambiguous with the platform-admin one), "MCP endpoint" (the app's rule, not the handler)
+
+**Sibling rule**:
+Another rule of the same alias's effective rule sets, invoked in-process by `RuleInvokerService` with the caller's identity and the sibling's own validators (`auth_required`, `requiredScopes`, `rate_limit`) — and, for an `external_proxy` sibling, its own header controls (`forwardCookies`, `authTransform`, `headerConfig`), exactly as at the edge — never the deployment visibility gate twice, and never nested (a sibling that is itself an MCP handler is refused). How an MCP tool runs, and the runtime cousin of the `alias://` idea (#698).
+_Avoid_: "internal call", "sub-pipeline"

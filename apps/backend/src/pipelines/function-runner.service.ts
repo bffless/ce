@@ -2,6 +2,37 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as vm from 'vm';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 
+/** Compiled scripts kept per distinct code (sha256); a rule's function is compiled once, not per request. */
+export const SCRIPT_CACHE_MAX = 64;
+
+/** A tiny insertion-ordered LRU over Map. */
+class LruMap<V> {
+  private readonly map = new Map<string, V>();
+  constructor(private readonly max: number) {}
+  get(key: string): V | undefined {
+    const value = this.map.get(key);
+    if (value !== undefined) {
+      this.map.delete(key);
+      this.map.set(key, value);
+    }
+    return value;
+  }
+  set(key: string, value: V): void {
+    if (this.map.has(key)) this.map.delete(key);
+    this.map.set(key, value);
+    if (this.map.size > this.max) {
+      const oldest = this.map.keys().next().value as string;
+      this.map.delete(oldest);
+    }
+  }
+  has(key: string): boolean {
+    return this.map.has(key);
+  }
+  get size(): number {
+    return this.map.size;
+  }
+}
+
 /**
  * Crypto helpers exposed to pipeline function handlers as the global `utils`
  * (also passed on the handler argument, so both `utils.sign(...)` and
@@ -114,6 +145,27 @@ export class FunctionRunnerService {
   private signingKeyCache: Buffer | null = null;
 
   /**
+   * Compiled wrapper scripts by code hash. A `vm.Script` is context-free —
+   * `runInContext` binds it to a fresh sandbox per run — so compiling once per
+   * distinct code is safe, and it is what makes a 250 KB bundled handler cost
+   * its compile once per rule version rather than once per request.
+   */
+  private readonly scripts = new LruMap<vm.Script>(SCRIPT_CACHE_MAX);
+  private readonly validations = new LruMap<ValidationResult>(SCRIPT_CACHE_MAX);
+
+  private static keyOf(code: string): string {
+    return createHash('sha256').update(code).digest('hex');
+  }
+
+  /** Test seams. */
+  cachedScripts(): number {
+    return this.scripts.size;
+  }
+  hasCachedScript(code: string): boolean {
+    return this.scripts.has(FunctionRunnerService.keyOf(code));
+  }
+
+  /**
    * Derive the pipeline signing key once, from a dedicated env var when set,
    * otherwise from the (required, stable) ENCRYPTION_KEY so signatures survive
    * restarts without extra configuration. Never exposed to the sandbox.
@@ -170,6 +222,15 @@ export class FunctionRunnerService {
    * Checks for prohibited patterns that could be used to escape the sandbox.
    */
   validateCode(code: string): ValidationResult {
+    const key = FunctionRunnerService.keyOf(code);
+    const memo = this.validations.get(key);
+    if (memo) return memo;
+    const result = this.validateCodeUncached(code);
+    this.validations.set(key, result);
+    return result;
+  }
+
+  private validateCodeUncached(code: string): ValidationResult {
     const errors: string[] = [];
 
     for (const pattern of PROHIBITED_PATTERNS) {
@@ -322,10 +383,15 @@ export class FunctionRunnerService {
         })();
       `;
 
-      // Compile and run
-      const script = new vm.Script(wrappedCode, {
-        filename: 'user-function.js',
-      });
+      // Compile once per distinct code, run per request
+      const key = FunctionRunnerService.keyOf(code);
+      let script = this.scripts.get(key);
+      if (!script) {
+        script = new vm.Script(wrappedCode, {
+          filename: 'user-function.js',
+        });
+        this.scripts.set(key, script);
+      }
 
       // Run with timeout
       await new Promise<void>((resolve, reject) => {

@@ -50,6 +50,7 @@ export type HandlerType =
   | 'vector_search'
   | 'http_request'
   | 'remote_request'
+  | 'mcp_handler'
   | 'stripe_checkout'
   | 'stripe_webhook'
   | 'signed_url'

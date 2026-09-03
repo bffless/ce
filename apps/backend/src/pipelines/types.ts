@@ -96,7 +96,8 @@ export type HandlerType =
   | 'data_upsert_many'
   | 'delay'
   | 'ffmpeg_handler'
-  | 'remote_request';
+  | 'remote_request'
+  | 'mcp_handler';
 
 /**
  * Pipeline step definition for execution.
