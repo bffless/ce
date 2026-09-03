@@ -33,6 +33,18 @@ The relay-minted access cookie for a single custom domain. The relay's answer to
 An `X-API-Key` credential scoped to one project, authenticating the data layer (`/api/*`, pipelines, proxy rules). It does **not**, today, produce a user session — that gap is the subject of issue #372.
 _Avoid_: "the project key", "access key"
 
+**App token**:
+A member-bound, project-bound, scoped bearer credential (`Authorization: Bearer bfat_…`) the member mints in *Settings → App Tokens*, or an OAuth client obtains on the member's behalf. Wherever a session is accepted for content or pipelines — the deployment visibility gate, `auth_required` — the token *is* the member, narrowed by its scopes: effective permission is what the member may do ∩ what the token was granted, so a token never elevates. On the admin API it behaves as a project-scoped API key does (project-fenced, role pinned). Not an API key: an API key is pinned to role `user` and bound to no person.
+_Avoid_: "personal access token", "PAT", "bearer" alone (a SuperTokens JWT is also a bearer)
+
+**Scope**:
+A `namespace:verb` string an app declares on its own rules (`auth_required` → `requiredScopes`) and an App token carries. CE only compares strings; the vocabulary is the app's (`workflow:read`, `workflow:run`, …). Sessions, custom-domain cookies and API keys are never scope-checked — a person acting as themselves is not a delegation.
+_Avoid_: "permission" (that is the member's project role), "role"
+
+**Bypass visibility**:
+A per-rule opt-out of the deployment visibility gate (`bypassVisibility: true` in rules-as-code) for endpoints a caller reaches before it has any credential — OAuth discovery under `/.well-known`, a webhook receiver. The rule's own validators still run; internal rewrites are unaffected.
+_Avoid_: "public rule" (deployment visibility is a different setting)
+
 **Owner session**:
 A browser session authenticated as the project owner, which login-gated SPA routes accept. The thing an automated client holding a Project API key currently cannot obtain.
 
