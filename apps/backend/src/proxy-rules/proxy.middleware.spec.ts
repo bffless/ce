@@ -630,6 +630,41 @@ describe('ProxyMiddleware', () => {
       expect((res as any).redirect).not.toHaveBeenCalled();
     });
 
+    it('points an anonymous API caller at the resource metadata (RFC 9728) when the request came through a domain host', async () => {
+      makePrivate();
+      (mockVisibilityService as any).resolveAccessControlByDomain = jest
+        .fn()
+        .mockResolvedValue(null);
+      const req = createMockRequest('/api/works', {
+        accept: 'application/json',
+        'x-forwarded-host': 'workflow.j5s.dev',
+      });
+      const res = createMockResponse();
+      (res as any).setHeader = jest.fn();
+      await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/*', proxyType: 'pipeline' }),
+      );
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect((res as any).setHeader).toHaveBeenCalledWith(
+        'WWW-Authenticate',
+        'Bearer resource_metadata="https://workflow.j5s.dev/.well-known/oauth-protected-resource"',
+      );
+      const bare = createMockResponse();
+      (bare as any).setHeader = jest.fn();
+      await (middleware as any).checkVisibilityAndAuth(
+        createMockRequest('/api/works', { accept: 'application/json' }),
+        bare,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/*', proxyType: 'pipeline' }),
+      );
+      expect((bare as any).setHeader).not.toHaveBeenCalled();
+    });
+
     it('does not exempt a non-proxy rule served from an auth path', async () => {
       makePrivate();
       const req = expiredTokenRequest('/api/auth/session/refresh');

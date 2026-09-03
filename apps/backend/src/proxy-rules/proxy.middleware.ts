@@ -647,6 +647,9 @@ export class ProxyMiddleware implements NestMiddleware {
       this.logger.debug(`Proxy blocked: not authenticated for private ${aliasName || 'project'}`);
 
       if (this.isApiRequest(req)) {
+        // RFC 9728 §5.1: tell a bearer client where the resource's OAuth metadata is
+        // (an app-shipped /.well-known rule), so a connector can start its flow.
+        this.setResourceMetadataHint(req, res);
         // Check if token was expired (set by AuthMiddleware)
         // If so, the response was already sent by AuthMiddleware
         // This is a fallback for cases where AuthMiddleware didn't catch it
@@ -705,6 +708,21 @@ export class ProxyMiddleware implements NestMiddleware {
 
     // User has access
     return 'allowed';
+  }
+
+  /**
+   * `WWW-Authenticate: Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource"`
+   * (RFC 9728 §5.1) on a 401 that reached CE through a domain host. The document itself is
+   * the app's to ship (a rule served despite visibility); CE only points at where it would be.
+   */
+  private setResourceMetadataHint(req: Request, res: Response): void {
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const host = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost;
+    if (!host) return;
+    res.setHeader(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="https://${host.split(',')[0].trim()}/.well-known/oauth-protected-resource"`,
+    );
   }
 
   /**
@@ -1206,6 +1224,7 @@ export class ProxyMiddleware implements NestMiddleware {
         // Pipeline failed - map error codes to appropriate HTTP status codes
         // (pipeline-from-rule.ts, shared with the in-process invoker)
         const statusCode = statusForPipelineError(result.error?.code);
+        if (statusCode === 401) this.setResourceMetadataHint(req, res);
         // RFC 6750 §3.1: a token that lacks the rule's scope is told which one.
         const scopeHeader = insufficientScopeHeader(result.error);
         if (scopeHeader) {

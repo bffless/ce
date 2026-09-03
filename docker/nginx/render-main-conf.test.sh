@@ -56,6 +56,7 @@ REALIP_RANGES="151.101.0.0/16 2a04:4e40::/32"'
 run_render
 assert_contains "$ETC/sites-available/main.conf" 'return 301 https://$host$request_uri;' 'proxy: port 80 redirects'
 assert_contains "$ETC/sites-available/main.conf" '/.well-known/acme-challenge/'          'proxy: ACME location present'
+assert_contains "$ETC/sites-available/main.conf" 'location = /.well-known/oauth-authorization-server'          'proxy: OAuth AS metadata location present'
 assert_contains "$ETC/cloudflare-realip.conf"    'set_real_ip_from 151.101.0.0/16;'      'proxy: custom range 1'
 assert_contains "$ETC/cloudflare-realip.conf"    'set_real_ip_from 2a04:4e40::/32;'      'proxy: custom range 2'
 assert_contains "$ETC/cloudflare-realip.conf"    'real_ip_header True-Client-IP;'        'proxy: custom header'
@@ -80,6 +81,7 @@ PORT80=redirect
 REALIP_MODE=off'
 run_render
 assert_contains     "$ETC/sites-available/main.conf" '/.well-known/acme-challenge/' 'direct: ACME location present'
+assert_contains     "$ETC/sites-available/main.conf" 'location = /.well-known/oauth-authorization-server' 'direct: OAuth AS metadata location present'
 assert_not_contains "$ETC/cloudflare-realip.conf"    'set_real_ip_from'             'direct: realip inactive'
 assert_contains     "$ETC/sites-available/main.conf" "ssl_certificate $ETC/ssl/fullchain.pem;" 'direct: admin vhost uses fullchain.pem by default'
 

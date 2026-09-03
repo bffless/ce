@@ -45,6 +45,14 @@ _Avoid_: "permission" (that is the member's project role), "role"
 A per-rule opt-out of the deployment visibility gate (`bypassVisibility: true` in rules-as-code) for endpoints a caller reaches before it has any credential — OAuth discovery under `/.well-known`, a webhook receiver. The rule's own validators still run; internal rewrites are unaffected.
 _Avoid_: "public rule" (deployment visibility is a different setting)
 
+**Authorization server**:
+CE's built-in OAuth 2.1 server on the admin host (`/api/oauth/*`; RFC 8414 metadata at `/.well-known/oauth-authorization-server`). Clients register themselves (RFC 7591, public clients only); a member consents per project and per scope on `/oauth/consent`; the access token *is* an App token, bound to the project the RFC 8707 `resource` named. Not SuperTokens' OAuth2Provider recipe (ADR-0005).
+_Avoid_: "SuperTokens OAuth", "SSO" (that is the member's own login, the other direction)
+
+**Protected-resource document**:
+An app-shipped `/.well-known/oauth-protected-resource` rule (served despite visibility — Bypass visibility) naming the resource, the Authorization server and the app's scopes (RFC 9728). How a client finds the server from the app; CE points at it in `WWW-Authenticate` on API 401s.
+_Avoid_: "discovery endpoint" (CE has none for apps)
+
 **Owner session**:
 A browser session authenticated as the project owner, which login-gated SPA routes accept. The thing an automated client holding a Project API key currently cannot obtain.
 
