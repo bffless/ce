@@ -7,12 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.48](https://github.com/bffless/ce/compare/v0.4.47...v0.4.48) (2026-09-03)
 
-
 ### Fixed
-
-* **deployments:** the wildcard subdomain handler serves a mapped host from its domain mapping, not from any alias sharing the subdomain's name ([#746](https://github.com/bffless/ce/issues/746)) ([bb161bb](https://github.com/bffless/ce/commit/bb161bbfb85bbfb87828cfa37659a8e3c3646c68))
-* **frontend:** a config panel for mcp_handler steps instead of "Unknown handler type" ([#744](https://github.com/bffless/ce/issues/744)) ([836fcbb](https://github.com/bffless/ce/commit/836fcbbffdc3499346d5ada2d4ad3d519eaec39e))
-* **nginx:** coalesce config-write bursts into one reload; atomic writes; in-place startup regeneration ([#747](https://github.com/bffless/ce/issues/747)) ([0cd81d4](https://github.com/bffless/ce/commit/0cd81d46a617843f93af281595c752725aef7449))
+- nginx: coalesce config-write bursts into one reload; atomic writes; in-place startup regeneration ([#747](https://github.com/bffless/ce/pull/747), thanks @toshimoto821)
+- deployments: the wildcard subdomain handler serves a mapped host from its domain mapping, not from any alias sharing the subdomain's name ([#746](https://github.com/bffless/ce/pull/746), thanks @toshimoto821)
+- frontend: a config panel for mcp_handler steps instead of "Unknown handler type" ([#744](https://github.com/bffless/ce/pull/744), thanks @toshimoto821)
 
 ## [0.4.47](https://github.com/bffless/ce/compare/v0.4.46...v0.4.47) (2026-09-03)
 
