@@ -13,7 +13,6 @@ import {
   users,
   apiKeys,
   aliasProxyRuleSets,
-  projectDefaultProxyRuleSets,
 } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
@@ -34,7 +33,6 @@ import {
   pipelineFromRule,
   statusForPipelineError,
 } from './pipeline-from-rule';
-import { Pipeline, PipelineStep } from '../pipelines/types';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
