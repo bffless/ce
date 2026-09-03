@@ -9,6 +9,7 @@ import {
   Req,
   Res,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
@@ -21,6 +22,27 @@ import { OAuthError } from './oauth.errors';
 import { ConsentDecisionDto, RegisterClientDto } from './oauth.dto';
 
 const NO_STORE = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+
+/**
+ * RFC 7591 registration bodies carry metadata CE does not model (`logo_uri`,
+ * `contacts`, `software_id`, …) — the global pipe's `forbidNonWhitelisted`
+ * would 400 on every one of them (claude.ai's registration did). Unknown
+ * fields are stripped, and what fails validation is answered in the RFC's
+ * `{ error: invalid_client_metadata, error_description }` shape.
+ */
+export function registerBodyPipe(): ValidationPipe {
+  return new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: false,
+    transform: true,
+    exceptionFactory: (errors) =>
+      new OAuthError(
+        'invalid_client_metadata',
+        errors.flatMap((e) => Object.values(e.constraints ?? {})).join('; ') ||
+          'invalid client metadata',
+      ),
+  });
+}
 
 /**
  * CE's OAuth 2.1 authorization server on the admin host (ADR-0005). The
@@ -36,7 +58,10 @@ export class OAuthController {
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Dynamic client registration (RFC 7591) — public clients' })
-  async register(@Body() dto: RegisterClientDto, @Res({ passthrough: true }) res: Response) {
+  async register(
+    @Body(registerBodyPipe()) dto: RegisterClientDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     res.set(NO_STORE);
     return this.oauth.registerClient(dto);
   }

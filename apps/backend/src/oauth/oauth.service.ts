@@ -30,6 +30,7 @@ export const ACCESS_TOKEN_TTL_S = 3600;
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 3600_000;
 export const CODE_TTL_MS = 10 * 60_000;
 export const PENDING_REQUEST_TTL_S = 10 * 60;
+const SUPPORTED_GRANT_TYPES = ['authorization_code', 'refresh_token'];
 const REFRESH_PREFIX = 'bfrt_';
 
 /** What a fetch of the resource's protected-resource document must do (injected for tests). */
@@ -118,15 +119,19 @@ export class OAuthService {
         );
       }
     }
-    if (dto.token_endpoint_auth_method !== undefined && dto.token_endpoint_auth_method !== 'none') {
-      throw new OAuthError(
-        'invalid_client_metadata',
-        'only public clients (token_endpoint_auth_method: none) are registered',
+    // RFC 7591 §3.2.1: the server may register different values than requested and
+    // MUST return the ones it registered. Every client is a public client here —
+    // there is no secret to issue — and a client that asked for another method
+    // is told `none` in the response (claude.ai and the MCP SDKs honour it).
+    if (dto.token_endpoint_auth_method && dto.token_endpoint_auth_method !== 'none') {
+      this.logger.log(
+        `OAuth client registration asked for ${dto.token_endpoint_auth_method}; registered as a public client (none)`,
       );
     }
-    const grantTypes = dto.grant_types?.length
-      ? dto.grant_types
-      : ['authorization_code', 'refresh_token'];
+    const requestedGrants = (dto.grant_types ?? []).filter((g) =>
+      SUPPORTED_GRANT_TYPES.includes(g),
+    );
+    const grantTypes = requestedGrants.length ? requestedGrants : [...SUPPORTED_GRANT_TYPES];
     const [row] = await db
       .insert(oauthClients)
       .values({ clientName: dto.client_name?.trim() || 'Unnamed client', redirectUris, grantTypes })
