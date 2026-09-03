@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.47](https://github.com/bffless/ce/compare/v0.4.46...v0.4.47) (2026-09-03)
 
-
 ### Fixed
-
-* **auth:** lenient OAuth client registration (RFC 7591) — claude.ai's DCR was refused ([#742](https://github.com/bffless/ce/issues/742)) ([7d47319](https://github.com/bffless/ce/commit/7d47319bb4f945fb07df5db5e4991f96d70bdc6c))
+- auth: lenient OAuth client registration (RFC 7591) — claude.ai's DCR was refused ([#742](https://github.com/bffless/ce/pull/742), thanks @toshimoto821)
 
 ## [0.4.46](https://github.com/bffless/ce/compare/v0.4.45...v0.4.46) (2026-09-03)
 
