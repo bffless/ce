@@ -7,15 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.43](https://github.com/bffless/ce/compare/v0.4.42...v0.4.43) (2026-09-03)
 
-
 ### Added
-
-* **auth:** app tokens, auth_required requiredScopes, per-rule bypassVisibility ([#730](https://github.com/bffless/ce/issues/730)) ([aff3180](https://github.com/bffless/ce/commit/aff318089cc8308c71642bcbccfcaa71c674b3f6))
-
+- auth: app tokens, auth_required requiredScopes, per-rule bypassVisibility ([#730](https://github.com/bffless/ce/pull/730), thanks @toshimoto821)
 
 ### Fixed
-
-* **auth:** bound the app-token last-used throttle map; checklist: new FKs must cascade or join the delete cleanup ([#733](https://github.com/bffless/ce/issues/733)) ([e8ff1db](https://github.com/bffless/ce/commit/e8ff1db105ce30af34521bce52de95256ed70795))
+- auth: bound the app-token last-used throttle map; checklist: new FKs must cascade or join the delete cleanup ([#733](https://github.com/bffless/ce/pull/733), thanks @toshimoto821)
 
 ## [0.4.42](https://github.com/bffless/ce/compare/v0.4.41...v0.4.42) (2026-08-30)
 
