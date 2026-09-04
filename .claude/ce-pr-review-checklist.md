@@ -254,6 +254,19 @@ the local pipe's `.transform()` directly gives false confidence.
 **Learned from:** PR #742, 2026-09-03 — `@Body(registerBodyPipe())` was meant to accept
 claude.ai's RFC 7591 metadata; the global pipe would still have 400'd first.
 
+### A new rule-manifest key is a three-repo change
+**Surface:** a new field on `proxy_rules` that rule sets author (`bypassVisibility`, `requiredScopes`-style
+config, anything `packages/cli/src/format/manifest.ts` must accept).
+**Check:** Does the PR name which release each hop needs? CE server (the column, DTOs, export) +
+`packages/cli` (the zod manifest is `.strict()`, so an unknown key fails `rules push`) → the npm
+`bffless` release → a `bffless/deploy-proxy-rules` dependency bump **and release** (the action bundles
+the CLI with ncc; consumers pin `@v1`) → the apps' deploy dispatch. Until the last hop ships, a rule set
+carrying the key fails the sync step with an unknown-manifest-key error and must be pushed by hand.
+**Why:** the CE half merging and releasing looks like "done" while every consumer's deploy is broken
+for the new key; the action's release is a person's step in another repo and is easy to forget.
+**Learned from:** PR #730 (`bypassVisibility`), 2026-09-03 — `bffless` 0.3.6 shipped with the CE
+release, `deploy-proxy-rules` needed a separate bump (its v1.3.1) before apps#585's rule set could deploy.
+
 ---
 
 ## Entry template
