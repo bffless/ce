@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.49](https://github.com/bffless/ce/compare/v0.4.48...v0.4.49) (2026-09-05)
+
+
+### Added
+
+* **frontend:** a form editor for mcp_handler steps ([#749](https://github.com/bffless/ce/issues/749)) ([0ddbcf7](https://github.com/bffless/ce/commit/0ddbcf767276d53725134781e959a4a3c34a2537))
+
 ## [0.4.48](https://github.com/bffless/ce/compare/v0.4.47...v0.4.48) (2026-09-03)
 
 ### Fixed
