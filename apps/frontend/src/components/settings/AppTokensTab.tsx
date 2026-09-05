@@ -289,7 +289,8 @@ export function AppTokensTab() {
                     />
                     <p className="text-xs text-muted-foreground">
                       The app’s own vocabulary, space-separated (namespace:verb) — e.g.
-                      workflow:read workflow:run workflow:files.
+                      workflow:read workflow:run workflow:files. Add auth:session to let the token
+                      be exchanged for a browser session (headless runs).
                     </p>
                     {scopes.length > 0 && (
                       <div className="flex flex-wrap gap-1" data-testid="scope-chips">

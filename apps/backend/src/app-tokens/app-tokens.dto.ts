@@ -37,8 +37,9 @@ export class CreateAppTokenDto {
   project: string;
 
   @ApiProperty({
-    description: 'Scopes the token is delegated (the app’s own vocabulary, namespace:verb)',
-    example: ['workflow:read', 'workflow:run'],
+    description:
+      'Scopes the token is delegated (the app’s own vocabulary, namespace:verb). The `auth:` namespace is CE’s: `auth:session` lets the token be exchanged for a session via POST /api/auth/session/from-app-token.',
+    example: ['workflow:read', 'workflow:run', 'auth:session'],
     type: [String],
   })
   @IsArray()

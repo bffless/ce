@@ -10,11 +10,19 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { SessionAuthGuard } from './session-auth.guard';
@@ -25,6 +33,7 @@ import { OnboardingExecutorService } from '../onboarding-rules/onboarding-execut
 import { DomainTokenService } from './domain-token.service';
 import { ProjectInviteLinksService } from '../project-invite-links/project-invite-links.service';
 import { ProjectResolverService } from './project-resolver.service';
+import { resolveAppToken, SESSION_EXCHANGE_SCOPE } from './app-token.util';
 import { PermissionsService } from '../permissions/permissions.service';
 import { OidcProvidersService } from '../settings/oidc-providers.service';
 import { PublicProjectAccess } from './decorators/public-project-access.decorator';
@@ -633,6 +642,10 @@ export class AuthController {
 
       const userId = req.session.getUserId();
       const sessionHandle = req.session.getHandle();
+      // `via` is set only on sessions minted from an app token
+      // (POST session/from-app-token); a password/OIDC session has no claim.
+      const via = req.session.getAccessTokenPayload()?.via as string | undefined;
+      const sessionInfo = { userId, handle: sessionHandle, ...(via ? { via } : {}) };
 
       // Project-membership gate (REQUIRE_PROJECT_MEMBERSHIP master switch).
       // Closes the parent-domain cookie bleed across *.bffless.app: a user with
@@ -650,7 +663,7 @@ export class AuthController {
           const role = await this.permissions.getUserProjectRole(userId, project.id);
           if (!role) {
             return {
-              session: { userId, handle: sessionHandle },
+              session: sessionInfo,
               user: null,
               emailVerified: false,
               emailVerificationRequired: false,
@@ -692,10 +705,7 @@ export class AuthController {
         if (pendingInvitation) {
           // Return session with user info from SuperTokens (not from DB)
           return {
-            session: {
-              userId,
-              handle: sessionHandle,
-            },
+            session: sessionInfo,
             user: {
               id: userId,
               email: stUserEmail,
@@ -725,10 +735,7 @@ export class AuthController {
       }
 
       return {
-        session: {
-          userId,
-          handle: sessionHandle,
-        },
+        session: sessionInfo,
         user: user
           ? {
               id: user.id,
@@ -774,6 +781,118 @@ export class AuthController {
   async refreshToken() {
     // SuperTokens middleware handles this automatically
     return { status: 'OK' };
+  }
+
+  @Post('session/from-app-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Exchange an app token for a session',
+    description:
+      'Mints a SuperTokens session for the member an app token stands for, so a client that ' +
+      'holds only the token (a headless browser, a CI job) can drive cookie-authenticated pages ' +
+      'without a password. No body — `Authorization: Bearer bfat_…`. The token must carry the ' +
+      '`auth:session` scope, the explicit opt-in for "this token may become a session". On a ' +
+      'project host the token must be bound to that project, and the REQUIRE_PROJECT_MEMBERSHIP ' +
+      'gate applies exactly as it does to sign-in. The session has SuperTokens’ normal lifetime: ' +
+      'it is not shortened to the token’s expiry, and revoking the token does not end sessions ' +
+      'already minted from it. The access token carries `via: "app_token"` and `appTokenId`. ' +
+      'Responds with the same body as POST /api/auth/signin; the session cookies ride on the response.',
+  })
+  @ApiResponse({ status: 200, description: 'Session created (same body as POST /api/auth/signin)' })
+  @ApiResponse({
+    status: 401,
+    description: 'No, unknown, expired or revoked app token (`code: unauthorized`)',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      '`code: insufficient_scope` (the token lacks `auth:session`; `missingScopes` names it) or ' +
+      '`code: token_project_mismatch` (the token is bound to another project than the request host)',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`code: user_not_exchangeable` — the user row predates the unified-ID invariant and SuperTokens does not know its id',
+  })
+  async sessionFromAppToken(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const resolved = await resolveAppToken(req.headers.authorization);
+    if (!resolved) {
+      throw new UnauthorizedException({
+        code: 'unauthorized',
+        message: 'A valid app token is required (Authorization: Bearer bfat_…)',
+      });
+    }
+    const { user, token } = resolved;
+
+    // The scope is the gate, not the token kind: an OAuth-issued token that was
+    // consented `auth:session` may exchange too.
+    if (!token.scopes.includes(SESSION_EXCHANGE_SCOPE)) {
+      throw new ForbiddenException({
+        code: 'insufficient_scope',
+        missingScopes: [SESSION_EXCHANGE_SCOPE],
+        message: `insufficient_scope: missing ${SESSION_EXCHANGE_SCOPE}`,
+      });
+    }
+
+    // On the admin host nothing resolves; on a project subdomain the token must
+    // be the one bound to that project (mirrors auth_required's check).
+    const project = await this.projectResolver.resolveProjectFromRequest(req);
+    if (project && project.id !== token.projectId) {
+      throw new ForbiddenException({
+        code: 'token_project_mismatch',
+        message: 'This token is bound to another project',
+      });
+    }
+
+    // Same membership gate as sign-in (a no-op unless REQUIRE_PROJECT_MEMBERSHIP
+    // is on). Sign-in's opaque "Invalid email or password" exists so a sister
+    // site cannot probe which accounts exist; the caller here already holds the
+    // member's own token, so the reason can be stated.
+    try {
+      await this.enforceProjectMembership(req, user.id);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw new UnauthorizedException({
+          code: 'unauthorized',
+          message: 'Not a member of this project',
+        });
+      }
+      throw error;
+    }
+
+    // Mint exactly as sign-in does. `dbUser.id === recipeUserId` is the
+    // unified-ID invariant (see completeOAuthSignIn); the claims at creation
+    // time save a second core round-trip and let GET /api/auth/session and
+    // logs tell an exchanged session from a password one.
+    try {
+      await Session.createNewSession(req, res, this.getTenantId(), new RecipeUserId(user.id), {
+        role: user.role,
+        via: 'app_token',
+        appTokenId: token.id,
+      });
+    } catch (error) {
+      if (error instanceof Error && /UNKNOWN_USER_ID/.test(error.message)) {
+        throw new ConflictException({
+          code: 'user_not_exchangeable',
+          message:
+            'This user cannot be exchanged for a session: SuperTokens does not know its id. ' +
+            'The account predates the unified-ID invariant and must be re-linked by an ' +
+            'administrator (its id must match its SuperTokens user id) before it can exchange.',
+        });
+      }
+      this.logger.error('[Session from app token] Failed to create session:', error);
+      throw error;
+    }
+
+    return {
+      message: 'Signed in successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+    };
   }
 
   @Post('forgot-password')

@@ -17,7 +17,18 @@ interface ErrorResponse {
   path: string;
   // Only included in non-production environments
   stack?: string;
+  // Structured details a handler put on the exception (`code`, `missingScopes`, `errors`, …)
+  [detail: string]: unknown;
 }
+
+/**
+ * Keys the filter owns. A handler's exception body cannot override them — the
+ * status, the canonical error name, the request path and the timestamp are
+ * always the filter's — but every other key on the body rides through to the
+ * client, so `throw new ForbiddenException({ code: 'insufficient_scope',
+ * missingScopes: [...] })` is a real wire contract, not just a unit-test one.
+ */
+const RESERVED_KEYS = new Set(['statusCode', 'error', 'message', 'timestamp', 'path', 'stack']);
 
 /**
  * Global exception filter that:
@@ -50,6 +61,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Internal server error';
     let error = 'Internal Server Error';
+    let details: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -61,6 +73,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const responseObj = exceptionResponse as Record<string, unknown>;
         message = (responseObj.message as string | string[]) || exception.message;
         error = (responseObj.error as string) || this.getErrorName(status);
+        details = Object.fromEntries(
+          Object.entries(responseObj).filter(([key]) => !RESERVED_KEYS.has(key)),
+        );
       }
 
       // Handle rate limiting - add Retry-After header
@@ -91,6 +106,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     // Build error response
     const errorResponse: ErrorResponse = {
+      ...details,
       statusCode: status,
       error,
       message,

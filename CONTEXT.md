@@ -34,11 +34,11 @@ An `X-API-Key` credential scoped to one project, authenticating the data layer (
 _Avoid_: "the project key", "access key"
 
 **App token**:
-A member-bound, project-bound, scoped bearer credential (`Authorization: Bearer bfat_…`) the member mints in _Settings → App Tokens_, or an OAuth client obtains on the member's behalf. Wherever a session is accepted for content or pipelines — the deployment visibility gate, `auth_required` — the token _is_ the member, narrowed by its scopes: effective permission is what the member may do ∩ what the token was granted, so a token never elevates. On the admin API it behaves as a project-scoped API key does (project-fenced, role pinned). Not an API key: an API key is pinned to role `user` and bound to no person.
+A member-bound, project-bound, scoped bearer credential (`Authorization: Bearer bfat_…`) the member mints in _Settings → App Tokens_, or an OAuth client obtains on the member's behalf. Wherever a session is accepted for content or pipelines — the deployment visibility gate, `auth_required` — the token _is_ the member, narrowed by its scopes: effective permission is what the member may do ∩ what the token was granted, so a token never elevates. On the admin API it behaves as a project-scoped API key does (project-fenced, role pinned). Carrying `auth:session`, it can be exchanged for a session (`POST /api/auth/session/from-app-token`, no body) — the session then has SuperTokens' normal lifetime, is not shortened to the token's expiry, and is not ended by revoking the token. Not an API key: an API key is pinned to role `user` and bound to no person.
 _Avoid_: "personal access token", "PAT", "bearer" alone (a SuperTokens JWT is also a bearer)
 
 **Scope**:
-A `namespace:verb` string an app declares on its own rules (`auth_required` → `requiredScopes`) and an App token carries. CE only compares strings; the vocabulary is the app's (`workflow:read`, `workflow:run`, …). Sessions, custom-domain cookies and API keys are never scope-checked — a person acting as themselves is not a delegation.
+A `namespace:verb` string an app declares on its own rules (`auth_required` → `requiredScopes`) and an App token carries. CE only compares strings; the vocabulary is the app's (`workflow:read`, `workflow:run`, …) — except the `auth:` namespace, which CE reserves for scopes it interprets itself. `auth:session` is the first: the opt-in that lets an App token be exchanged for a session. Sessions, custom-domain cookies and API keys are never scope-checked — a person acting as themselves is not a delegation.
 _Avoid_: "permission" (that is the member's project role), "role"
 
 **Bypass visibility**:

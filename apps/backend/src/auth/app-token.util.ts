@@ -20,6 +20,16 @@ export const APP_TOKEN_BYTES = 32;
 /** `last_used_at` is written at most once per token per interval — an MCP host's burst must not become a write per call. */
 export const LAST_USED_WRITE_INTERVAL_MS = 60_000;
 
+/**
+ * The one scope CE interprets itself. Scope vocabulary is otherwise the app's
+ * (`workflow:read`, …) and CE only compares strings — but the `auth:` namespace
+ * is reserved for CE-owned scopes, and `auth:session` is the first: a token
+ * carrying it may be exchanged for a SuperTokens session
+ * (`POST /api/auth/session/from-app-token`). The explicit opt-in exists because
+ * a session is broader than any scope list — it is the member, unnarrowed.
+ */
+export const SESSION_EXCHANGE_SCOPE = 'auth:session';
+
 export interface ResolvedAppToken {
   user: { id: string; email: string; role: string };
   token: { id: string; projectId: string; scopes: string[]; kind: string; clientId: string | null };
