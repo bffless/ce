@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.49](https://github.com/bffless/ce/compare/v0.4.48...v0.4.49) (2026-09-05)
 
-
 ### Added
+- frontend: a form editor for mcp_handler steps ([#749](https://github.com/bffless/ce/pull/749), thanks @toshimoto821)
 
-* **frontend:** a form editor for mcp_handler steps ([#749](https://github.com/bffless/ce/issues/749)) ([0ddbcf7](https://github.com/bffless/ce/commit/0ddbcf767276d53725134781e959a4a3c34a2537))
+### Maintenance
+- checklist: a new rule-manifest key is a three-repo change (CE + bffless CLI + deploy-proxy-rules) ([#748](https://github.com/bffless/ce/pull/748), thanks @toshimoto821)
 
 ## [0.4.48](https://github.com/bffless/ce/compare/v0.4.47...v0.4.48) (2026-09-03)
 
