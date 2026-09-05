@@ -413,7 +413,8 @@ export type HandlerConfig =
   | XmlFeedParseHandlerConfig
   | DataUpsertManyHandlerConfig
   | DelayHandlerConfig
-  | FfmpegHandlerConfig;
+  | FfmpegHandlerConfig
+  | McpHandlerConfig;
 
 export interface SignedUrlHandlerConfig extends BaseHandlerConfig {
   /** Storage key / path (supports expressions, e.g. "steps.upload.storage_path") */
@@ -605,4 +606,42 @@ export interface StripeCheckoutHandlerConfig extends BaseHandlerConfig {
 export interface StripeWebhookHandlerConfig extends BaseHandlerConfig {
   allowedEventTypes?: string[];
   environment?: 'sandbox' | 'production';
+}
+
+/**
+ * `mcp_handler` — the step answers as a stateless MCP server: tools and
+ * `ui://` resources mapped to sibling rules of the same alias. The form
+ * editor lives in `./mcp/`; see `mcp/model.ts` for the normalized shape.
+ */
+export interface McpHandlerConfig extends BaseHandlerConfig {
+  serverInfo: { name: string; version: string };
+  instructions?: string;
+  protocolVersions?: string[];
+  tools: {
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+    annotations?: Record<string, unknown>;
+    visibility?: Array<'model' | 'app'>;
+    _meta?: Record<string, unknown>;
+    rule: { path: string; method?: 'GET' | 'POST' };
+  }[];
+  resources?: {
+    static?: {
+      uri: string;
+      name: string;
+      description?: string;
+      mimeType?: string;
+      rule: { path: string; method?: 'GET' };
+    }[];
+    templates?: {
+      uriTemplate: string;
+      name: string;
+      description?: string;
+      mimeType?: string;
+      rule: { path: string };
+    }[];
+    list?: { rule: { path: string; method?: 'GET' } };
+    csp?: { connectDomains?: string[]; resourceDomains?: string[] };
+  };
 }
