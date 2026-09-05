@@ -227,6 +227,24 @@ Sign in a user.
 
 Session cookies are set automatically.
 
+### POST /api/auth/session/from-app-token
+
+Exchange an app token for a session — for a client that holds only a token (a headless browser, a CI job) and needs cookie-authenticated pages without a member's password.
+
+**Request:** no body. `Authorization: Bearer bfat_…`. The token must carry the `auth:session` scope (mint it with `POST /api/app-tokens` or in _Settings → App Tokens_; `auth:` is the one scope namespace CE interprets itself).
+
+**Response:** the same body as `POST /api/auth/signin`; session cookies are set automatically (so `COOKIE_DOMAIN` makes them valid on project subdomains). The access token carries `via: "app_token"` and `appTokenId`, which `GET /api/auth/session` surfaces as `session.via`.
+
+| Status | `code`                   | When                                                                                   |
+| ------ | ------------------------ | -------------------------------------------------------------------------------------- |
+| 401    | `unauthorized`           | No `bfat_` bearer, or the token is unknown, expired or revoked, or its user is disabled |
+| 403    | `insufficient_scope`     | The token lacks `auth:session` (`missingScopes` names it)                              |
+| 403    | `token_project_mismatch` | The request host resolves to a project the token is not bound to                       |
+| 401    | `unauthorized`           | `REQUIRE_PROJECT_MEMBERSHIP` is on and the member has no role on the resolved project  |
+| 409    | `user_not_exchangeable`  | SuperTokens does not know the user's id (the row predates the unified-ID invariant)    |
+
+The session has SuperTokens' normal lifetime: it is not shortened to the token's expiry, and revoking the token does not end sessions already minted from it.
+
 ### POST /api/auth/signout
 
 Sign out current user (revokes session).
