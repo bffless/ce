@@ -510,7 +510,7 @@ export function getHandlerDescription(type: HandlerType): string {
     remote_request:
       'Call an admin-configured remote connection (Cloud Run etc.) with the platform identity',
     mcp_handler:
-      'Answer as a stateless MCP server from this step’s config: tools and ui:// resources mapped to sibling rules, run as the caller. Authored as code (rules-as-code); no form editor',
+      'Answer as a stateless MCP server: tools and ui:// resources mapped to sibling rules of this alias, run as the caller',
     stripe_checkout: 'Create a Stripe Checkout Session and return the payment URL',
     stripe_webhook: 'Verify Stripe webhook signature and parse the event',
     signed_url: 'Generate a time-limited presigned URL for a file in storage',

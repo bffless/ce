@@ -1,0 +1,248 @@
+{
+  "tools": [
+    {
+      "name": "workflow.list",
+      "rule": { "path": "/api/workflow/mcp-tools/list", "method": "POST" },
+      "annotations": { "readOnlyHint": true },
+      "description": "List the implementations published to this harness and their workflows, each with its `headlessSafe` mark (whether every interactive step declares what to do without a person).",
+      "inputSchema": {
+        "type": "object",
+        "required": [],
+        "properties": { "impl": { "type": "string", "description": "Only this implementation." } },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.describe",
+      "rule": { "path": "/api/workflow/mcp-tools/describe", "method": "POST" },
+      "annotations": { "readOnlyHint": true },
+      "description": "Describe one workflow before deciding a run can complete without a person: its inputs (types, required, defaults), its outputs, the job/step graph in dependency order, and each interactive step’s `headless` declaration.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["impl", "workflow"],
+        "properties": {
+          "impl": { "type": "string", "description": "The implementation alias, e.g. `hello`." },
+          "workflow": { "type": "string", "description": "The workflow id — the file base name minus `.workflow.yaml`, e.g. `interactive`." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.start",
+      "rule": { "path": "/api/workflow/mcp-tools/start", "method": "POST" },
+      "annotations": { "readOnlyHint": false },
+      "description": "Start a run of a workflow with the given inputs. Validated exactly as the kickoff form validates a person’s values; a refusal names each bad input. Returns the run id and its first snapshot, and moves the page to the run.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["impl", "workflow", "inputs"],
+        "properties": {
+          "impl": { "type": "string", "description": "The implementation alias, e.g. `hello`." },
+          "inputs": { "type": "object", "description": "Values for `on.manual.inputs`, keyed by input name. An omitted input takes its declared default; a `file` input is a whole File ref (`{ path, name, contentType, size, url }`), never a bare path or a URL. Pass `{}` for a workflow with no inputs.", "additionalProperties": true },
+          "workflow": { "type": "string", "description": "The workflow id — the file base name minus `.workflow.yaml`, e.g. `interactive`." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.status",
+      "rule": { "path": "/api/workflow/mcp-tools/status", "method": "POST" },
+      "annotations": { "readOnlyHint": true },
+      "description": "The run snapshot: status, the steps in flight, every reached step’s status, the outputs so far, and `waitingOn` — for each waiting step what would satisfy it (its kind, its evaluated inputs, an island’s declared outputs and src).",
+      "inputSchema": {
+        "type": "object",
+        "required": [],
+        "properties": { "runId": { "type": "string", "description": "The run to act on. Optional where a current run exists (the harness page); required over the MCP endpoint." } },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.await",
+      "rule": { "path": "/api/workflow/mcp-tools/await", "method": "POST" },
+      "annotations": { "readOnlyHint": true },
+      "description": "Wait until the run needs input (`until: \"waiting\"`) or ends (`until: \"terminal\"`), then return its snapshot. The polite alternative to polling `workflow.status`.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["until"],
+        "properties": {
+          "runId": { "type": "string", "description": "The run to act on. Optional where a current run exists (the harness page); required over the MCP endpoint." },
+          "until": { "enum": ["waiting", "terminal"], "type": "string", "description": "`waiting`: resolve as soon as the run needs input (a step is `waiting`) or ends; `terminal`: resolve only when the run ends." },
+          "timeoutMs": { "type": "integer", "maximum": 600000, "minimum": 1, "description": "How long to wait before answering with the current snapshot and `timedOut: true` (default 120000)." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.runs",
+      "rule": { "path": "/api/workflow/mcp-tools/runs", "method": "POST" },
+      "annotations": { "readOnlyHint": true },
+      "description": "Past runs of one workflow, newest first: id, status, when it started and ended, and which steps it is waiting on.",
+      "inputSchema": {
+        "type": "object",
+        "required": [],
+        "properties": {
+          "impl": { "type": "string", "description": "The implementation alias; defaults to the current run’s (or the page’s) on the harness page." },
+          "limit": { "type": "integer", "maximum": 50, "minimum": 1, "description": "At most this many runs, newest first (default 20)." },
+          "status": { "enum": ["running", "succeeded", "failed", "cancelled"], "type": "string", "description": "Only runs in this status." },
+          "workflow": { "type": "string", "description": "The workflow id; defaults to the current run’s (or the page’s) on the harness page." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.submitStep",
+      "rule": { "path": "/api/workflow/mcp-tools/submitStep", "method": "POST" },
+      "_meta": { "ui": { "resourceUri": "ui://bffless/workflow/step-view.e2235b30.html" } },
+      "annotations": { "readOnlyHint": false },
+      "description": "Complete a waiting interactive step, or open it for the person. A `form` step takes a value per field; an `island` step takes its declared outputs. Validated by the same checks a person’s submit runs; a refusal names each bad value. In an agent host that renders this tool’s UI, call it with `values: {}` for an island or form step: the step’s own UI is shown and the person completes it there — do not invent values for them.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["step", "values"],
+        "properties": {
+          "step": { "type": "string", "description": "The waiting step’s key, `<job>/<index>/<step>` — as listed in the snapshot’s `waitingOn`." },
+          "runId": { "type": "string", "description": "The run to act on. Optional where a current run exists (the harness page); required over the MCP endpoint." },
+          "values": { "type": "object", "description": "For a `form` step: a value per field, keyed by field name (a `choice` over File refs takes the ref’s `path`). For an `island` step: the step’s declared outputs, keyed by output name.", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.outputs",
+      "rule": { "path": "/api/workflow/mcp-tools/outputs", "method": "POST" },
+      "annotations": { "readOnlyHint": true },
+      "description": "The run’s outputs — File refs (`{ path, name, contentType, size, url }`), never bytes.",
+      "inputSchema": {
+        "type": "object",
+        "required": [],
+        "properties": { "runId": { "type": "string", "description": "The run to act on. Optional where a current run exists (the harness page); required over the MCP endpoint." } },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.sign",
+      "rule": { "path": "/api/workflow/mcp-tools/sign", "method": "POST" },
+      "annotations": { "readOnlyHint": false },
+      "description": "Exchange a File ref’s `path` for a short-lived presigned GET URL (`{ url, expiresIn }`), the same one islands get to show media.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string", "description": "A File ref’s `path` — an uploads-relative key under `workflows/`. Nothing else is signable." },
+          "runId": { "type": "string", "description": "The run to act on. Optional where a current run exists (the harness page); required over the MCP endpoint." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.cancel",
+      "rule": { "path": "/api/workflow/mcp-tools/cancel", "method": "POST" },
+      "annotations": { "readOnlyHint": false },
+      "description": "Cancel the run. Server-side pipeline jobs already enqueued keep running.",
+      "inputSchema": {
+        "type": "object",
+        "required": [],
+        "properties": { "runId": { "type": "string", "description": "The run to act on. Optional where a current run exists (the harness page); required over the MCP endpoint." } },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.resume",
+      "rule": { "path": "/api/workflow/mcp-tools/resume", "method": "POST" },
+      "annotations": { "readOnlyHint": false },
+      "description": "Take over a `running` run whose driver went away (an expired lease) so this surface drives it from here — how an agent adopts a run another tab or host abandoned.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["runId"],
+        "properties": { "runId": { "type": "string", "description": "The `running` run to take over." } },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.submit",
+      "rule": { "path": "/api/workflow/mcp-tools/submit", "method": "POST" },
+      "visibility": ["app"],
+      "description": "Complete the waiting island step of a run with its declared outputs — the island's own `workflow.submit` (spec 04), answered server-side: validated against the step's declared output map exactly as the harness page validates it, then written to the step row. Refused while a harness tab still drives the run.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["runId", "step", "outputs"],
+        "properties": {
+          "step": { "type": "string", "description": "The step key, `<job>/<index>/<step>`, of the waiting island step." },
+          "runId": { "type": "string", "description": "The run the island belongs to." },
+          "outputs": { "type": "object", "description": "The values for the step’s declared outputs.", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.annotate",
+      "rule": { "path": "/api/workflow/mcp-tools/annotate", "method": "POST" },
+      "visibility": ["app"],
+      "description": "Record annotations and/or a summary on the waiting island step — the island's own `workflow.annotate` (spec 04), budgeted per step exactly as on the harness page.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["runId", "step"],
+        "properties": {
+          "step": { "type": "string", "description": "The step key, `<job>/<index>/<step>`, of the waiting island step." },
+          "runId": { "type": "string", "description": "The run the island belongs to." },
+          "summary": { "type": "string" },
+          "annotations": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "Entries of `{ level: notice|warning|error, message, title? }`." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.pipeline",
+      "rule": { "path": "/api/workflow/mcp-tools/pipeline", "method": "POST" },
+      "visibility": ["app"],
+      "description": "Call one of the run's own implementation's pipelines on the island's behalf — a tool name resolves to `/api/<impl>/<path>` (dots as slashes) and is fenced to that implementation exactly as on the harness page (spec 04).",
+      "inputSchema": {
+        "type": "object",
+        "required": ["runId", "step", "name"],
+        "properties": {
+          "name": { "type": "string", "description": "The pipeline’s tool name, e.g. `echo` or `video.slice`." },
+          "step": { "type": "string", "description": "The step key, `<job>/<index>/<step>`, of the waiting island step." },
+          "runId": { "type": "string", "description": "The run the island belongs to." },
+          "method": { "enum": ["GET", "POST"], "type": "string", "description": "Defaults to POST." },
+          "arguments": { "type": "object", "description": "The JSON body (POST) or query (GET).", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "workflow.stepView",
+      "rule": { "path": "/api/workflow/mcp-tools/stepView", "method": "POST" },
+      "visibility": ["app"],
+      "description": "What the step view needs to mount a waiting interactive step. An island: its HTML (unchanged, fetched from the implementation's bundle), the step's persisted inputs (its tool-input arguments) and its declared outputs. A form: the fields the harness evaluated when the step started waiting, their initial values, the title and the submit label.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["runId", "step"],
+        "properties": {
+          "step": { "type": "string", "description": "The step key, `<job>/<index>/<step>`, of the waiting island step." },
+          "runId": { "type": "string", "description": "The run the island belongs to." }
+        },
+        "additionalProperties": false
+      }
+    }
+  ],
+  "resources": {
+    "csp": { "connectDomains": ["$app", "$storage"], "resourceDomains": ["$storage"] },
+    "list": { "rule": { "path": "/api/workflow/mcp-resources", "method": "GET" } },
+    "static": [
+      {
+        "uri": "ui://bffless/workflow/step-view.e2235b30.html",
+        "name": "Workflow step view",
+        "rule": { "path": "/api/workflow/mcp-resources/step-view" },
+        "description": "Mounts a waiting island or form step of a run (spec 10)."
+      }
+    ],
+    "templates": [
+      {
+        "name": "island",
+        "rule": { "path": "/w/{impl}/{path+}" },
+        "description": "An island of an implementation, served unchanged from its bundle (spec 04).",
+        "uriTemplate": "ui://bffless/{impl}/{path+}"
+      }
+    ]
+  },
+  "serverInfo": { "name": "bffless-workflow", "version": "1.0.0" },
+  "instructions": "The BFFless Workflow harness: 11 workflow.* tools to list, describe and watch runs and complete a waiting interactive step (island or form). Pass runId to every run-scoped tool."
+}
