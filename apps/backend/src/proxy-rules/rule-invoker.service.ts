@@ -96,19 +96,27 @@ export class RuleInvokerService {
   }
 
   private async resolveRule(req: InvokeRequest): Promise<ProxyRule | null> {
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, req.projectId))
-      .limit(1);
-    if (!project) return null;
+    const rules = await this.effectiveRules(req.projectId, req.alias);
+    return findMatchingRule(rules, req.path, req.method);
+  }
+
+  /**
+   * The effective rules of (project, alias) in priority order — the alias's
+   * sets, else the project's defaults — exactly as the edge resolves them;
+   * cached briefly. Empty when the project or its sets are missing. Public so
+   * a handler that reads its siblings' config (the `oauth_protected_resource`
+   * document's derived scopes) and `OAuthService` see the same list.
+   */
+  async effectiveRules(projectId: string, aliasName: string | undefined): Promise<ProxyRule[]> {
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+    if (!project) return [];
     let alias: { id: string; proxyRuleSetId: string | null } | null = null;
-    if (req.alias) {
+    if (aliasName) {
       const [row] = await db
         .select()
         .from(deploymentAliases)
         .where(
-          and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, req.alias)),
+          and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, aliasName)),
         )
         .limit(1);
       if (row) alias = { id: row.id, proxyRuleSetId: row.proxyRuleSetId };
@@ -117,9 +125,8 @@ export class RuleInvokerService {
       { id: project.id, defaultProxyRuleSetId: project.defaultProxyRuleSetId },
       alias,
     );
-    if (ids.length === 0) return null;
-    const rules = await this.cachedRules(ids);
-    return findMatchingRule(rules, req.path, req.method);
+    if (ids.length === 0) return [];
+    return this.cachedRules(ids);
   }
 
   private async cachedRules(ids: string[]): Promise<ProxyRule[]> {
