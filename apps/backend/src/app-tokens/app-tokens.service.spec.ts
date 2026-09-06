@@ -115,6 +115,29 @@ describe('AppTokensService', () => {
       expect(mockDb.values.mock.calls[0][0].expiresAt.getTime()).toBe(soon.getTime());
     });
 
+    it('mints a never-expiring token on neverExpires (expiresAt null, reported as null)', async () => {
+      mockDb.returning.mockResolvedValueOnce([{ ...inserted, expiresAt: null }]);
+      const { view } = await service.create('user-1', 'user', { ...dto, neverExpires: true });
+      expect(mockDb.values.mock.calls[0][0].expiresAt).toBeNull();
+      expect(view.expiresAt).toBeNull();
+    });
+
+    it('keeps the 90-day default when neverExpires is false or absent', async () => {
+      mockDb.returning.mockResolvedValueOnce([inserted]);
+      await service.create('user-1', 'user', { ...dto, neverExpires: false });
+      const ttl = mockDb.values.mock.calls[0][0].expiresAt.getTime() - Date.now();
+      expect(ttl).toBeGreaterThan(89 * 86400000);
+      expect(ttl).toBeLessThanOrEqual(90 * 86400000);
+    });
+
+    it('refuses neverExpires together with an expiresAt', async () => {
+      const soon = new Date(Date.now() + 86400000).toISOString();
+      await expect(
+        service.create('user-1', 'user', { ...dto, neverExpires: true, expiresAt: soon }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
     it('lets an OAuth caller set kind, clientId and its own expiry', async () => {
       mockDb.returning.mockResolvedValueOnce([{ ...inserted, kind: 'oauth', clientId: 'c1' }]);
       const at = new Date(Date.now() + 3600_000);

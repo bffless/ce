@@ -58,7 +58,7 @@ export class AppTokensService {
       }
     }
 
-    const expiresAt = opts.expiresAt ?? this.resolveExpiry(dto.expiresAt);
+    const expiresAt = opts.expiresAt ?? this.resolveExpiry(dto);
     const minted = mintToken();
     const [row] = await db
       .insert(appTokens)
@@ -108,7 +108,22 @@ export class AppTokensService {
     this.logger.log(`App token ${id} revoked by user ${userId}`);
   }
 
-  private resolveExpiry(requested: string | undefined): Date {
+  /**
+   * The expiry a personal mint asked for: `neverExpires` → null (the schema's
+   * `expires_at` is nullable and every resolver — `resolveAppToken`, hence the
+   * guards, the proxy middleware and the session exchange — already reads a
+   * null as "not expired"); omitted → the default TTL; a date → clamped.
+   * `neverExpires` and `expiresAt` together is a contradiction, refused
+   * rather than silently picking one (ce#755).
+   */
+  private resolveExpiry(dto: Pick<CreateAppTokenDto, 'expiresAt' | 'neverExpires'>): Date | null {
+    const requested = dto.expiresAt;
+    if (dto.neverExpires === true) {
+      if (requested) {
+        throw new BadRequestException('expiresAt and neverExpires are mutually exclusive');
+      }
+      return null;
+    }
     const now = Date.now();
     if (!requested) return new Date(now + APP_TOKEN_DEFAULT_TTL_DAYS * DAY_MS);
     const at = new Date(requested).getTime();

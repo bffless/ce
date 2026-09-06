@@ -19,7 +19,10 @@ export interface CreateAppTokenDto {
   name: string;
   project: string; // owner/repo
   scopes: string[];
+  /** ISO-8601; omitted → the server's 90-day default. Mutually exclusive with `neverExpires`. */
   expiresAt?: string;
+  /** Mint a token that never expires (`expiresAt` comes back null). Omit rather than send `false`. */
+  neverExpires?: boolean;
 }
 
 export interface CreateAppTokenResponse {
