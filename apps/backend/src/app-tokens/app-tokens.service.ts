@@ -5,7 +5,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { SQL, and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client';
 import { appTokens, projects } from '../db/schema';
 import { mintToken } from '../auth/app-token.util';
@@ -13,12 +14,20 @@ import { ProjectsService } from '../projects/projects.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import {
   APP_TOKEN_DEFAULT_TTL_DAYS,
+  APP_TOKEN_LIST_DEFAULT_LIMIT,
   APP_TOKEN_MAX_TTL_DAYS,
   AppTokenView,
   CreateAppTokenDto,
+  ListAppTokensQueryDto,
 } from './app-tokens.dto';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface AppTokenPage {
+  items: AppTokenView[];
+  /** The id of the last item when another page follows; `null` on the last page. */
+  nextCursor: string | null;
+}
 
 /**
  * Mint, list and revoke app tokens. A token never elevates, so any member of
@@ -79,7 +88,31 @@ export class AppTokensService {
     return { view: this.toView(row, project), raw: minted.raw };
   }
 
-  async listMine(userId: string): Promise<AppTokenView[]> {
+  /**
+   * The caller's tokens, newest first, one page at a time. Revoked and expired
+   * tokens are omitted unless `includeInactive` — automation mints a token per
+   * run, so the dead ones outnumber the live ones within days.
+   */
+  async listMine(userId: string, query: ListAppTokensQueryDto = {}): Promise<AppTokenPage> {
+    const limit = query.limit ?? APP_TOKEN_LIST_DEFAULT_LIMIT;
+    const conditions: SQL[] = [eq(appTokens.userId, userId)];
+    if (!query.includeInactive) {
+      conditions.push(
+        isNull(appTokens.revokedAt),
+        or(isNull(appTokens.expiresAt), gt(appTokens.expiresAt, new Date()))!,
+      );
+    }
+    if (query.cursor) {
+      // Keyset on (created_at, id): everything strictly after the cursor row in
+      // list order. The cursor row's key is read in SQL rather than round-tripped
+      // through a JS Date, which would truncate created_at's microseconds and
+      // skip same-millisecond neighbours. A cursor that is not one of the
+      // caller's tokens compares against NULL and yields an empty page.
+      const c = alias(appTokens, 'cursor_row');
+      conditions.push(
+        sql`(${appTokens.createdAt}, ${appTokens.id}) < (select ${c.createdAt}, ${c.id} from ${appTokens} ${c} where ${c.id} = ${query.cursor} and ${c.userId} = ${userId})`,
+      );
+    }
     const rows = await db
       .select({
         token: appTokens,
@@ -87,9 +120,15 @@ export class AppTokensService {
       })
       .from(appTokens)
       .innerJoin(projects, eq(appTokens.projectId, projects.id))
-      .where(eq(appTokens.userId, userId))
-      .orderBy(desc(appTokens.createdAt));
-    return rows.map((r) => this.toView(r.token, r.project));
+      .where(and(...conditions))
+      .orderBy(desc(appTokens.createdAt), desc(appTokens.id))
+      .limit(limit + 1);
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    return {
+      items: page.map((r) => this.toView(r.token, r.project)),
+      nextCursor: hasMore ? page[page.length - 1].token.id : null,
+    };
   }
 
   /** Soft revoke; 404 unless the token is the caller's; idempotent on an already-revoked token. */

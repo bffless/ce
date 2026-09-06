@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import {
-  useListAppTokensQuery,
+  useListAppTokensInfiniteQuery,
   useCreateAppTokenMutation,
   useRevokeAppTokenMutation,
+  type AppToken,
   type CreateAppTokenResponse,
 } from '@/services/appTokensApi';
 import { useListMyProjectsQuery } from '@/services/meApi';
@@ -47,6 +48,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -72,6 +74,11 @@ function defaultExpiryDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Expired but not revoked — it answers 401 all the same, and is listed only with the toggle on. */
+export function isExpired(token: Pick<AppToken, 'expiresAt' | 'revokedAt'>): boolean {
+  return !token.revokedAt && !!token.expiresAt && new Date(token.expiresAt).getTime() < Date.now();
+}
+
 /**
  * App tokens — scoped, project-bound bearers a member mints for an agent or a
  * script (or an OAuth client obtained on their behalf). Every member gets this
@@ -83,6 +90,7 @@ export function AppTokensTab() {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [minted, setMinted] = useState<CreateAppTokenResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const [includeInactive, setIncludeInactive] = useState(false);
 
   const [name, setName] = useState('');
   const [project, setProject] = useState('');
@@ -90,7 +98,9 @@ export function AppTokensTab() {
   const [expiresAt, setExpiresAt] = useState(defaultExpiryDate);
   const [neverExpires, setNeverExpires] = useState(false);
 
-  const { data: tokens, isLoading, error } = useListAppTokensQuery();
+  const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useListAppTokensInfiniteQuery({ includeInactive });
+  const tokens = useMemo(() => data?.pages.flatMap((page) => page.data) ?? [], [data]);
   const { data: projects } = useListMyProjectsQuery();
   const [createToken, { isLoading: isCreating }] = useCreateAppTokenMutation();
   const [revokeToken, { isLoading: isRevoking }] = useRevokeAppTokenMutation();
@@ -362,10 +372,22 @@ export function AppTokensTab() {
         </div>
       </CardHeader>
       <CardContent>
-        {!tokens || tokens.length === 0 ? (
+        <div className="flex items-center gap-2 mb-4">
+          <Switch
+            id="app-tokens-include-inactive"
+            checked={includeInactive}
+            onCheckedChange={setIncludeInactive}
+          />
+          <Label htmlFor="app-tokens-include-inactive" className="font-normal">
+            Show expired and revoked
+          </Label>
+        </div>
+        {tokens.length === 0 ? (
           <div className="text-center py-12">
             <KeyRound className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No app tokens yet</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              {includeInactive ? 'No app tokens yet' : 'No active app tokens'}
+            </h3>
             <p className="text-muted-foreground">
               Mint one to let an agent or a script act as you on a project.
             </p>
@@ -385,14 +407,23 @@ export function AppTokensTab() {
             </TableHeader>
             <TableBody>
               {tokens.map((t) => (
-                <TableRow key={t.id} className={t.revokedAt ? 'opacity-60' : undefined}>
+                <TableRow
+                  key={t.id}
+                  className={t.revokedAt || isExpired(t) ? 'opacity-60' : undefined}
+                >
                   <TableCell className="font-medium">
                     <span className={t.revokedAt ? 'line-through' : undefined}>{t.name}</span>
                     <div className="font-mono text-xs text-muted-foreground">{t.tokenPrefix}…</div>
-                    {t.revokedAt && (
+                    {t.revokedAt ? (
                       <div className="text-xs text-muted-foreground">
                         Revoked {fmt(t.revokedAt)}
                       </div>
+                    ) : (
+                      isExpired(t) && (
+                        <div className="text-xs text-muted-foreground">
+                          Expired {fmt(t.expiresAt)}
+                        </div>
+                      )
                     )}
                   </TableCell>
                   <TableCell>
@@ -464,6 +495,18 @@ export function AppTokensTab() {
               ))}
             </TableBody>
           </Table>
+        )}
+        {hasNextPage && (
+          <div className="flex justify-center mt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+            >
+              {isFetchingNextPage ? 'Loading…' : 'Load more'}
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
