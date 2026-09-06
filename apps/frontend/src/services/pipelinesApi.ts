@@ -8,6 +8,8 @@ export type ValidatorType = 'auth_required' | 'rate_limit';
 export interface AuthRequiredConfig {
   roles?: string[];
   allowApiKey?: boolean;
+  /** Scopes an app token must carry (`namespace:verb`); the MCP discovery document derives `scopes_supported` from these. */
+  requiredScopes?: string[];
 }
 
 export interface RateLimitConfig {
@@ -51,6 +53,7 @@ export type HandlerType =
   | 'http_request'
   | 'remote_request'
   | 'mcp_handler'
+  | 'oauth_protected_resource'
   | 'stripe_checkout'
   | 'stripe_webhook'
   | 'signed_url'

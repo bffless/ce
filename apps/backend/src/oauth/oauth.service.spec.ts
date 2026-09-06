@@ -64,10 +64,18 @@ function make(configOverrides: Record<string, string | undefined> = {}) {
     create: jest.fn().mockResolvedValue({ view: { id: 'tok-1' }, raw: 'bfat_raw' }),
   };
   const permissions = { getUserProjectRole: jest.fn().mockResolvedValue('contributor') };
+  // The alias's effective rules; empty means "no oauth_protected_resource step" → the fetch path.
+  const rules = { effectiveRules: jest.fn().mockResolvedValue([]) };
   return {
-    service: new OAuthService(config as never, appTokens as never, permissions as never),
+    service: new OAuthService(
+      config as never,
+      appTokens as never,
+      permissions as never,
+      rules as never,
+    ),
     appTokens,
     permissions,
+    rules,
   };
 }
 
@@ -216,6 +224,92 @@ describe('OAuthService', () => {
           headers: expect.objectContaining({ 'x-forwarded-host': 'www.workflow.j5s.dev' }),
         }),
       );
+    });
+    it('reads scopes_supported straight from an oauth_protected_resource step on the alias instead of fetching (#760)', async () => {
+      const { service, rules } = make();
+      const prmRule = {
+        id: 'prm',
+        pathPattern: '/.well-known/oauth-protected-resource*',
+        method: 'GET',
+        methods: null,
+        isEnabled: true,
+        pipelineConfig: {
+          name: 'prm',
+          steps: [
+            {
+              name: 'prm',
+              handlerType: 'oauth_protected_resource',
+              config: { resource: '/api/workflow/mcp' },
+            },
+          ],
+        },
+      };
+      const mcpRule = {
+        id: 'mcp',
+        pathPattern: '/api/workflow/mcp',
+        method: null,
+        methods: null,
+        isEnabled: true,
+        pipelineConfig: {
+          name: 'mcp',
+          steps: [
+            {
+              name: 'server',
+              handlerType: 'mcp_handler',
+              config: {
+                serverInfo: { name: 'Workflow', version: '1' },
+                tools: [{ name: 'list', rule: { path: '/api/workflow/tools/list' } }],
+              },
+            },
+          ],
+        },
+      };
+      const sibling = {
+        id: 'list',
+        pathPattern: '/api/workflow/tools/list',
+        method: 'POST',
+        methods: null,
+        isEnabled: true,
+        pipelineConfig: {
+          name: 'list',
+          validators: [{ type: 'auth_required', config: { requiredScopes: ['workflow:read'] } }],
+          steps: [],
+        },
+      };
+      rules.effectiveRules.mockResolvedValue([prmRule, mcpRule, sibling]);
+      mockDb.limit
+        .mockResolvedValueOnce([client])
+        .mockResolvedValueOnce([mapping])
+        .mockResolvedValueOnce([project]);
+      const fetchImpl = jest.fn(prm);
+      const { pending } = await service.beginAuthorization(authorizeParams(), fetchImpl);
+      expect(rules.effectiveRules).toHaveBeenCalledWith('p1', 'workflow');
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(pending).toMatchObject({ projectId: 'p1', scopes: ['workflow:read'] });
+    });
+    it('keeps fetching the document for an app-shipped /.well-known rule', async () => {
+      const { service, rules } = make();
+      rules.effectiveRules.mockResolvedValue([
+        {
+          id: 'shipped',
+          pathPattern: '/.well-known/oauth-protected-resource*',
+          method: null,
+          methods: null,
+          isEnabled: true,
+          pipelineConfig: {
+            name: 'shipped',
+            steps: [{ name: 'doc', handlerType: 'function_handler', config: {} }],
+          },
+        },
+      ]);
+      mockDb.limit
+        .mockResolvedValueOnce([client])
+        .mockResolvedValueOnce([mapping])
+        .mockResolvedValueOnce([project]);
+      const fetchImpl = jest.fn(prm);
+      const { pending } = await service.beginAuthorization(authorizeParams(), fetchImpl);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(pending.scopes).toEqual(['workflow:read', 'workflow:run', 'workflow:files']);
     });
     it('narrows to the requested scopes and refuses an unknown one', async () => {
       const { service } = make();

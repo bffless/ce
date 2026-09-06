@@ -1194,3 +1194,27 @@ export interface McpHandlerConfig extends BaseHandlerConfig {
     csp?: { connectDomains?: string[]; resourceDomains?: string[] };
   };
 }
+
+/**
+ * `oauth_protected_resource` — the RFC 9728 protected-resource document for an
+ * `mcp_handler` on this host, so an app writes no discovery code. Every URL is
+ * derived from the request and the instance: `resource` is
+ * `https://<host><resource>`, `authorization_servers` is CE's own issuer
+ * (`OAuthService.issuer()`). A rule carrying this step is served regardless of
+ * deployment visibility — the handler implies `bypassVisibility` (#760).
+ */
+export interface OAuthProtectedResourceConfig extends BaseHandlerConfig {
+  /** The MCP endpoint's path on this host, e.g. `/api/mcp`. */
+  resource: string;
+  /**
+   * `scopes_supported`, verbatim. Omitted: the union of `requiredScopes` on the
+   * `auth_required` validators of the sibling rules the `mcp_handler` at
+   * `resource` maps its tools to. This list is the authorize flow's allowlist,
+   * so declare it when a sibling's scope must not be offered over OAuth.
+   */
+  scopes?: string[];
+  /** `resource_name`; defaults to the `mcp_handler`'s `serverInfo.name`. */
+  resourceName?: string;
+  /** `resource_documentation`, a URL. */
+  resourceDocumentation?: string;
+}

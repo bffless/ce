@@ -50,3 +50,16 @@ catch-all served `index.html` there); the app ships its protected-resource docum
 rule (`bypassVisibility`), so CE never grows an app-aware discovery endpoint. OIDC discovery,
 token introspection (RFC 7662) and client garbage collection are deferred. If SuperTokens'
 recipe later gains DCR and CE has crossed the SDK-21 line, revisiting is a one-ADR decision.
+
+**Amended 2026-09-06 (#760).** The document stays a rule of the alias — still no CE endpoint
+that knows about apps — but CE now ships a declared step for it, `oauth_protected_resource`,
+after two apps had copied the same ~50-line function (and both guessed the issuer as
+`admin.<parent>`, wrong for any instance whose admin host is not `admin.*`). The step derives
+`resource` from the request host, `authorization_servers` from `OAuthService.issuer()`, and
+`scopes_supported` from the `mcp_handler`'s sibling `requiredScopes` unless declared; a rule
+carrying it is served regardless of visibility without `bypassVisibility`. The fully-derived
+alternative (answer `/.well-known` on a rule miss from whatever `mcp_handler` the alias has)
+was rejected: `scopes_supported` is the authorize flow's allowlist, and an emergent list that
+an unrelated rule edit can change is not something to publish implicitly. Hand-written
+documents keep working; `OAuthService` reads the step's config directly and fetches only for
+those.

@@ -6,10 +6,11 @@ vi.mock('react-router-dom', () => ({
   useParams: () => ({ ruleSetId: 'set-1', ruleId: 'rule-1' }),
 }));
 const rulesQuery = vi.fn();
+let rulesData: { rules: unknown[] } = { rules: [] };
 vi.mock('@/services/proxyRulesApi', () => ({
   useGetRuleSetRulesQuery: (id: string, opts?: { skip?: boolean }) => {
     rulesQuery(id, opts);
-    return { data: { rules: [] }, isLoading: false };
+    return { data: rulesData, isLoading: false };
   },
 }));
 
@@ -122,6 +123,77 @@ describe('McpHandlerConfig', () => {
     );
     expect(summary.textContent).toContain('tool a: rule.path must start with /');
     expect(summary.textContent).toContain('duplicate tool name: a');
+  });
+
+  describe('Server tab: where OAuth discovery comes from (#760)', () => {
+    const prmRule = (config: Record<string, unknown>) => ({
+      id: 'prm',
+      pathPattern: '/.well-known/oauth-protected-resource*',
+      method: 'GET',
+      methods: null,
+      isEnabled: true,
+      pipelineConfig: { steps: [{ handlerType: 'oauth_protected_resource', config }] },
+    });
+    const self = {
+      id: 'rule-1',
+      pathPattern: '/api/workflow/mcp',
+      method: null,
+      methods: ['GET', 'POST'],
+      isEnabled: true,
+      pipelineConfig: null,
+    };
+    const list = {
+      id: 'list',
+      pathPattern: '/api/workflow/mcp-tools/list',
+      method: 'POST',
+      methods: null,
+      isEnabled: true,
+      pipelineConfig: {
+        validators: [{ type: 'auth_required', config: { requiredScopes: ['workflow:read'] } }],
+        steps: [],
+      },
+    };
+
+    it('says nothing serves it when the set has no well-known rule', () => {
+      rulesData = { rules: [self, list] };
+      render(<McpHandlerConfig config={config} onChange={() => {}} />);
+      expect(screen.getByTestId('mcp-discovery').textContent).toMatch(
+        /No \/\.well-known\/oauth-protected-resource rule in this set/,
+      );
+    });
+
+    it('shows the derived scopes_supported from the tools’ sibling rules', () => {
+      rulesData = { rules: [self, list, prmRule({ resource: '/api/workflow/mcp' })] };
+      render(<McpHandlerConfig config={config} onChange={() => {}} />);
+      const note = screen.getByTestId('mcp-discovery').textContent ?? '';
+      expect(note).toContain('Served by the oauth_protected_resource step');
+      expect(note).toContain('scopes_supported — derived: workflow:read');
+    });
+
+    it('shows a declared list verbatim', () => {
+      rulesData = {
+        rules: [self, prmRule({ resource: '/api/workflow/mcp', scopes: ['workflow:run'] })],
+      };
+      render(<McpHandlerConfig config={config} onChange={() => {}} />);
+      expect(screen.getByTestId('mcp-discovery').textContent).toContain(
+        'scopes_supported — declared: workflow:run',
+      );
+    });
+
+    it('names an app-shipped custom rule', () => {
+      rulesData = {
+        rules: [
+          self,
+          {
+            ...prmRule({}),
+            pipelineConfig: { steps: [{ handlerType: 'function_handler', config: {} }] },
+          },
+        ],
+      };
+      render(<McpHandlerConfig config={config} onChange={() => {}} />);
+      expect(screen.getByTestId('mcp-discovery').textContent).toContain('Served by a custom rule');
+      rulesData = { rules: [] };
+    });
   });
 
   it('renders an empty config without blowing up', () => {

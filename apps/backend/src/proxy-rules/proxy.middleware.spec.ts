@@ -552,6 +552,69 @@ describe('ProxyMiddleware', () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
+    it('lets a rule whose pipeline serves the RFC 9728 document (oauth_protected_resource) through anonymously without bypassVisibility (#760)', async () => {
+      makePrivate();
+      const req = createMockRequest('/.well-known/oauth-protected-resource', {
+        accept: 'application/json',
+      });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({
+          pathPattern: '/.well-known/oauth-protected-resource*',
+          proxyType: 'pipeline',
+          bypassVisibility: false,
+          pipelineConfig: {
+            name: 'prm',
+            steps: [
+              {
+                name: 'prm',
+                handlerType: 'oauth_protected_resource',
+                config: { resource: '/api/mcp' },
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(result).toBe('allowed');
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('still gates an app-shipped /.well-known pipeline that did not opt out', async () => {
+      makePrivate();
+      const req = createMockRequest('/.well-known/oauth-protected-resource', {
+        accept: 'application/json',
+      });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({
+          pathPattern: '/.well-known/oauth-protected-resource*',
+          proxyType: 'pipeline',
+          bypassVisibility: false,
+          pipelineConfig: {
+            name: 'shipped',
+            steps: [
+              { name: 'doc', handlerType: 'function_handler', config: { code: '' } },
+              { name: 'respond', handlerType: 'response_handler', config: {} },
+            ],
+          },
+        }),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
     it('admits a Bearer app token on a private deployment as the member', async () => {
       makePrivate();
       mockResolveAppToken.mockResolvedValueOnce({
