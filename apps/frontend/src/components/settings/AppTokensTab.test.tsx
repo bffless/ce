@@ -94,6 +94,62 @@ describe('AppTokensTab', () => {
     expect(screen.queryByDisplayValue('bfat_rawrawraw')).toBeNull();
   });
 
+  it('sends the dated form by default, and neverExpires (without expiresAt) when ticked', async () => {
+    createTrigger.mockReturnValue({
+      unwrap: () => Promise.resolve({ data: { ...token, expiresAt: null }, token: 'bfat_never' }),
+    });
+    render(<AppTokensTab />);
+    fireEvent.click(screen.getByRole('button', { name: /mint token/i }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'workflow-ci' } });
+    fireEvent.change(screen.getByLabelText('Scopes'), { target: { value: 'workflow:run' } });
+
+    const expires = screen.getByLabelText('Expires') as HTMLInputElement;
+    expect(expires).not.toBeDisabled();
+    expect(expires.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(screen.queryByTestId('never-expires-note')).toBeNull();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /never expires/i }));
+    expect(expires).toBeDisabled();
+    expect(screen.getByTestId('never-expires-note')).toHaveTextContent('until you revoke it');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /mint token/i }).at(-1)!);
+    await waitFor(() => expect(createTrigger).toHaveBeenCalledTimes(1));
+    const body = createTrigger.mock.calls[0][0];
+    expect(body).toMatchObject({ name: 'workflow-ci', neverExpires: true });
+    expect(body).not.toHaveProperty('expiresAt');
+    await screen.findByTestId('minted-token');
+  });
+
+  it('omits neverExpires from the body when the box is left unticked', async () => {
+    createTrigger.mockReturnValue({
+      unwrap: () => Promise.resolve({ data: token, token: 'bfat_dated' }),
+    });
+    render(<AppTokensTab />);
+    fireEvent.click(screen.getByRole('button', { name: /mint token/i }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'dated' } });
+    fireEvent.change(screen.getByLabelText('Scopes'), { target: { value: 'workflow:run' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /mint token/i }).at(-1)!);
+    await waitFor(() => expect(createTrigger).toHaveBeenCalledTimes(1));
+    const body = createTrigger.mock.calls[0][0];
+    expect(body).not.toHaveProperty('neverExpires');
+    expect(typeof body.expiresAt).toBe('string');
+  });
+
+  it('shows "Never" in the Expires column for a token without an expiry', () => {
+    // Column order: Name, Project, Scopes, Kind, Expires, Last used, Actions.
+    listResult = { data: [{ ...token, expiresAt: null }], isLoading: false };
+    const { unmount } = render(<AppTokensTab />);
+    let cells = screen.getByText('Claude — workflow').closest('tr')!.querySelectorAll('td');
+    expect(cells[4]).toHaveTextContent('Never');
+    unmount();
+
+    listResult = { data: [token], isLoading: false };
+    render(<AppTokensTab />);
+    cells = screen.getByText('Claude — workflow').closest('tr')!.querySelectorAll('td');
+    expect(cells[4]).not.toHaveTextContent('Never');
+    expect(cells[4]).not.toHaveTextContent('—');
+  });
+
   it('calls the revoke mutation with the id', async () => {
     revokeTrigger.mockReturnValue({ unwrap: () => Promise.resolve() });
     render(<AppTokensTab />);

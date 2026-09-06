@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsOptional,
   IsString,
@@ -49,11 +50,20 @@ export class CreateAppTokenDto {
   scopes: string[];
 
   @ApiPropertyOptional({
-    description: `Expiry (ISO-8601). Defaults to ${APP_TOKEN_DEFAULT_TTL_DAYS} days; at most ${APP_TOKEN_MAX_TTL_DAYS} days ahead.`,
+    description: `Expiry (ISO-8601). Defaults to ${APP_TOKEN_DEFAULT_TTL_DAYS} days; at most ${APP_TOKEN_MAX_TTL_DAYS} days ahead. Mutually exclusive with \`neverExpires\`.`,
   })
   @IsOptional()
   @IsDateString()
   expiresAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Mint a token that never expires (`expiresAt` is null in the response). For long-lived automation — CI members, MCP connectors, headless drivers — where a forced renewal is a scheduled outage. Off by default so the safe path stays the default; mutually exclusive with `expiresAt`. The token is still refused once revoked.',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  neverExpires?: boolean;
 }
 
 export interface AppTokenView {

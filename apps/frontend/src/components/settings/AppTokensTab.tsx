@@ -44,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -87,6 +88,7 @@ export function AppTokensTab() {
   const [project, setProject] = useState('');
   const [scopesInput, setScopesInput] = useState('');
   const [expiresAt, setExpiresAt] = useState(defaultExpiryDate);
+  const [neverExpires, setNeverExpires] = useState(false);
 
   const { data: tokens, isLoading, error } = useListAppTokensQuery();
   const { data: projects } = useListMyProjectsQuery();
@@ -103,6 +105,7 @@ export function AppTokensTab() {
     setProject('');
     setScopesInput('');
     setExpiresAt(defaultExpiryDate());
+    setNeverExpires(false);
   };
 
   const handleMint = async () => {
@@ -119,7 +122,13 @@ export function AppTokensTab() {
         name: name.trim(),
         project: effectiveProject,
         scopes,
-        expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59Z`).toISOString() : undefined,
+        // Only the chosen shape is sent: an older server (no `neverExpires` in
+        // its DTO) still accepts the dated/default form from this UI.
+        ...(neverExpires
+          ? { neverExpires: true }
+          : {
+              expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59Z`).toISOString() : undefined,
+            }),
       }).unwrap();
       setMinted(response);
       resetForm();
@@ -312,7 +321,24 @@ export function AppTokensTab() {
                       type="date"
                       value={expiresAt}
                       onChange={(e) => setExpiresAt(e.target.value)}
+                      disabled={neverExpires}
                     />
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="app-token-never-expires"
+                        checked={neverExpires}
+                        onCheckedChange={(checked) => setNeverExpires(checked === true)}
+                      />
+                      <Label htmlFor="app-token-never-expires" className="font-normal">
+                        Never expires
+                      </Label>
+                    </div>
+                    {neverExpires && (
+                      <p className="text-xs text-muted-foreground" data-testid="never-expires-note">
+                        For long-lived automation (CI, MCP connectors, headless drivers). The token
+                        stays valid until you revoke it — treat it like a password.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -389,7 +415,7 @@ export function AppTokensTab() {
                       : 'Personal'}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {fmt(t.expiresAt)}
+                    {t.expiresAt ? fmt(t.expiresAt) : 'Never'}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {t.lastUsedAt ? fmt(t.lastUsedAt) : 'Never'}

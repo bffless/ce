@@ -105,6 +105,15 @@ describe('app-token.util', () => {
       expect(await resolveAppToken('Bearer bfat_x')).toBeNull();
     });
 
+    it('resolves a never-expiring token (expiresAt null) — the guards, the proxy and the session exchange all go through here', async () => {
+      mockDb.limit
+        .mockResolvedValueOnce([tokenRow({ expiresAt: null })])
+        .mockResolvedValueOnce([userRow()]);
+      const resolved = await resolveAppToken('Bearer bfat_never');
+      expect(resolved?.token.id).toBe('tok-1');
+      expect(resolved?.user.id).toBe('user-1');
+    });
+
     it('returns null for a revoked token', async () => {
       mockDb.limit.mockResolvedValueOnce([tokenRow({ revokedAt: new Date() })]);
       expect(await resolveAppToken('Bearer bfat_x')).toBeNull();
