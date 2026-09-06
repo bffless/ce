@@ -160,13 +160,13 @@ describe('AppTokensTab', () => {
 
   it('shows "Never" in the Expires column for a token without an expiry', () => {
     // Column order: Name, Project, Scopes, Kind, Expires, Last used, Actions.
-    listResult = { data: [{ ...token, expiresAt: null }], isLoading: false };
+    listResult = { data: pagesOf([{ ...token, expiresAt: null }]), isLoading: false };
     const { unmount } = render(<AppTokensTab />);
     let cells = screen.getByText('Claude — workflow').closest('tr')!.querySelectorAll('td');
     expect(cells[4]).toHaveTextContent('Never');
     unmount();
 
-    listResult = { data: [token], isLoading: false };
+    listResult = { data: pagesOf([token]), isLoading: false };
     render(<AppTokensTab />);
     cells = screen.getByText('Claude — workflow').closest('tr')!.querySelectorAll('td');
     expect(cells[4]).not.toHaveTextContent('Never');
