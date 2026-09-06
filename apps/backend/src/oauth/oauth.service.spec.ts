@@ -287,6 +287,36 @@ describe('OAuthService', () => {
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(pending).toMatchObject({ projectId: 'p1', scopes: ['workflow:read'] });
     });
+    it('falls back to the fetch when the step on the bare well-known rule publishes another resource', async () => {
+      const { service, rules } = make();
+      rules.effectiveRules.mockResolvedValue([
+        {
+          id: 'prm',
+          pathPattern: '/.well-known/oauth-protected-resource*',
+          method: 'GET',
+          methods: null,
+          isEnabled: true,
+          pipelineConfig: {
+            name: 'prm',
+            steps: [
+              {
+                name: 'prm',
+                handlerType: 'oauth_protected_resource',
+                config: { resource: '/api/other/mcp', scopes: ['other:read'] },
+              },
+            ],
+          },
+        },
+      ]);
+      mockDb.limit
+        .mockResolvedValueOnce([client])
+        .mockResolvedValueOnce([mapping])
+        .mockResolvedValueOnce([project]);
+      const fetchImpl = jest.fn(prm);
+      const { pending } = await service.beginAuthorization(authorizeParams(), fetchImpl);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(pending.scopes).not.toContain('other:read');
+    });
     it('keeps fetching the document for an app-shipped /.well-known rule', async () => {
       const { service, rules } = make();
       rules.effectiveRules.mockResolvedValue([

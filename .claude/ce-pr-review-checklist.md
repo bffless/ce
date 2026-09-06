@@ -267,6 +267,20 @@ for the new key; the action's release is a person's step in another repo and is 
 **Learned from:** PR #730 (`bypassVisibility`), 2026-09-03 — `bffless` 0.3.6 shipped with the CE
 release, `deploy-proxy-rules` needed a separate bump (its v1.3.1) before apps#585's rule set could deploy.
 
+### A step type that implies `bypassVisibility` must gate on the step being the rule's whole answer
+**Surface:** `apps/backend/src/pipelines/mcp/protected-resource.ts` (`servesProtectedResourceDocument`),
+`apps/backend/src/proxy-rules/proxy.middleware.ts` (`checkVisibilityAndAuth`) — any future handler type
+that widens the visibility gate by its presence rather than by the rule's `bypassVisibility` flag.
+**Check:** Does the "implies bypass" check require the rule's own `pathPattern` to match the convention
+(`/.well-known/…`) **and** the step to be the pipeline's first enabled step (its whole answer), or does it
+fire on step-type presence anywhere in `steps`/`postSteps`?
+**Why:** `checkVisibilityAndAuth` runs before the pipeline; on mere presence, a rule that does work before
+the "public" step — a `data_query` on a private deployment, say — has that work served unauthenticated,
+with no `bypassVisibility` ever toggled to signal the intent. Not a new trust boundary (the rule's author
+controls `bypassVisibility` already), but a silent widening.
+**Learned from:** PR #761, 2026-09-06 — the first cut scanned all steps for `oauth_protected_resource`;
+narrowed in the same PR to well-known rules whose first enabled step is the handler.
+
 ---
 
 ## Entry template

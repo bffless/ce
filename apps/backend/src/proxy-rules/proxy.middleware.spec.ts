@@ -585,6 +585,38 @@ describe('ProxyMiddleware', () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
+    it('does not let the step imply the bypass for an unrelated rule that merely carries it', async () => {
+      makePrivate();
+      const req = createMockRequest('/api/reports', { accept: 'application/json' });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({
+          pathPattern: '/api/reports*',
+          proxyType: 'pipeline',
+          bypassVisibility: false,
+          pipelineConfig: {
+            name: 'reports',
+            steps: [
+              { name: 'q', handlerType: 'data_query', config: {} },
+              {
+                name: 'prm',
+                handlerType: 'oauth_protected_resource',
+                config: { resource: '/api/mcp' },
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
     it('still gates an app-shipped /.well-known pipeline that did not opt out', async () => {
       makePrivate();
       const req = createMockRequest('/.well-known/oauth-protected-resource', {

@@ -35,7 +35,7 @@ export function pipelineStepsOf(
   return [...(config.steps ?? []), ...(config.postSteps ?? [])];
 }
 
-/** Whether a rule's pipeline carries a step of the given handler type. */
+/** Whether a rule's pipeline carries an enabled step of the given handler type, anywhere. */
 export function pipelineHasHandler(
   rule: Pick<ProxyRule, 'pipelineConfig'> | null | undefined,
   handlerType: string,
@@ -45,42 +45,65 @@ export function pipelineHasHandler(
   );
 }
 
-/**
- * Whether a matched rule serves the protected-resource document through the
- * dedicated handler — the case the visibility gate lets through without the
- * rule saying `bypassVisibility` (the handler implies it).
- */
-export function servesProtectedResourceDocument(
-  rule: Pick<ProxyRule, 'pipelineConfig'> | null | undefined,
-): boolean {
-  return pipelineHasHandler(rule, PROTECTED_RESOURCE_HANDLER);
+/** Whether a rule's pattern answers the well-known path — bare (`…/oauth-protected-resource*`) or suffixed. */
+export function answersWellKnownPath(rule: Pick<ProxyRule, 'pathPattern'>): boolean {
+  return (
+    matchesPattern(rule.pathPattern, PROTECTED_RESOURCE_PATH) ||
+    rule.pathPattern.startsWith(PROTECTED_RESOURCE_PATH)
+  );
 }
 
-/** The first enabled `oauth_protected_resource` step of a rule, with its config; undefined when none. */
+/**
+ * The `oauth_protected_resource` step that *is* a rule's answer: the first
+ * enabled main step (the handler always terminates, so nothing after it runs
+ * and nothing before it may). Undefined when the step is absent, disabled, or
+ * preceded by another step — a pipeline that does work before publishing the
+ * document is not "just the document".
+ */
 export function protectedResourceStepOf(
   rule: Pick<ProxyRule, 'pipelineConfig'> | null | undefined,
 ): OAuthProtectedResourceConfig | undefined {
-  const step = pipelineStepsOf(rule).find(
-    (s) => s.handlerType === PROTECTED_RESOURCE_HANDLER && s.isEnabled !== false,
-  );
-  return step ? (step.config as unknown as OAuthProtectedResourceConfig) : undefined;
+  const config = rule?.pipelineConfig as PipelineConfig | null | undefined;
+  const first = (config?.steps ?? []).find((s) => s.isEnabled !== false);
+  if (!first || first.handlerType !== PROTECTED_RESOURCE_HANDLER) return undefined;
+  return first.config as unknown as OAuthProtectedResourceConfig;
+}
+
+/**
+ * Whether a matched rule serves the protected-resource document through the
+ * dedicated handler — the case the visibility gate lets through without the
+ * rule saying `bypassVisibility` (the handler implies it). Deliberately
+ * narrow: the rule must answer the well-known path and the step must be its
+ * whole answer, so the implication cannot widen an unrelated rule that merely
+ * carries the step somewhere in its pipeline.
+ */
+export function servesProtectedResourceDocument(
+  rule: Pick<ProxyRule, 'pipelineConfig' | 'pathPattern'> | null | undefined,
+): boolean {
+  return !!rule && answersWellKnownPath(rule) && protectedResourceStepOf(rule) !== undefined;
 }
 
 /**
  * The `oauth_protected_resource` config that answers discovery for `resourcePath`
  * on an alias, as a client would find it: the path-suffixed form first
  * (`/.well-known/oauth-protected-resource/api/mcp`, RFC 9728 §3), then the bare
- * path. Undefined when the alias's matched rule is not this handler (an
- * app-shipped `function_handler` document, or nothing at all).
+ * path — and only when that step's own `resource` is `resourcePath`, so the
+ * scopes read are the resource's, not another server's on the same alias.
+ * Undefined when the alias's matched rule is not this handler (an app-shipped
+ * `function_handler` document, or nothing at all).
  */
 export function findProtectedResourceConfig(
   rules: ProxyRule[],
   resourcePath: string,
 ): OAuthProtectedResourceConfig | undefined {
+  const wanted = resourcePath.replace(/\/+$/, '');
+  const names = (config: OAuthProtectedResourceConfig | undefined) =>
+    config && config.resource.replace(/\/+$/, '') === wanted ? config : undefined;
   const suffixed = findMatchingRule(rules, `${PROTECTED_RESOURCE_PATH}${resourcePath}`, 'GET');
-  const fromSuffixed = protectedResourceStepOf(suffixed);
-  if (fromSuffixed) return fromSuffixed;
-  return protectedResourceStepOf(findMatchingRule(rules, PROTECTED_RESOURCE_PATH, 'GET'));
+  return (
+    names(protectedResourceStepOf(suffixed)) ??
+    names(protectedResourceStepOf(findMatchingRule(rules, PROTECTED_RESOURCE_PATH, 'GET')))
+  );
 }
 
 /**

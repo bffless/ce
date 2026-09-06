@@ -68,12 +68,16 @@ export function stepsOf(rule: DiscoveryRule | undefined): StepLike[] {
   );
 }
 
-/** The `oauth_protected_resource` step's config on a rule, when it has one. */
+/**
+ * The `oauth_protected_resource` step that is a rule's whole answer — its first
+ * enabled main step, as the backend requires before the step implies the
+ * visibility bypass; undefined otherwise.
+ */
 export function protectedResourceConfigOf(
   rule: DiscoveryRule | undefined,
 ): ProtectedResourceConfig | undefined {
-  const step = stepsOf(rule).find((s) => s.handlerType === PROTECTED_RESOURCE_HANDLER);
-  if (!step) return undefined;
+  const step = (rule?.pipelineConfig?.steps ?? []).find((s) => s.isEnabled !== false);
+  if (!step || step.handlerType !== PROTECTED_RESOURCE_HANDLER) return undefined;
   const c = isRecord(step.config) ? step.config : {};
   return {
     resource: typeof c.resource === 'string' ? c.resource : '',
@@ -153,7 +157,7 @@ export function discoveryFor(
 ): DiscoverySummary {
   const ownPath = rules.find((r) => r.id === input.ruleId)?.pathPattern;
   const handlerRules = rules
-    .filter((r) => r.isEnabled)
+    .filter(answersWellKnown)
     .map((rule) => ({ rule, config: protectedResourceConfigOf(rule) }))
     .filter((x): x is { rule: DiscoveryRule; config: ProtectedResourceConfig } => !!x.config);
   const own = ownPath

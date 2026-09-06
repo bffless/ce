@@ -126,6 +126,31 @@ describe('discovery', () => {
     });
   });
 
+  it('only counts a handler step that is the whole answer of a well-known rule', () => {
+    const elsewhere = rule({
+      id: 'elsewhere',
+      pathPattern: '/api/reports*',
+      pipelineConfig: {
+        steps: [{ handlerType: 'oauth_protected_resource', config: { resource: '/api/mcp' } }],
+      },
+    });
+    expect(discoveryFor([mcp, elsewhere], { ruleId: 'mcp', tools })).toEqual({ kind: 'none' });
+    const preceded = rule({
+      id: 'preceded',
+      pathPattern: `${PROTECTED_RESOURCE_PATH}*`,
+      pipelineConfig: {
+        steps: [
+          { handlerType: 'data_query', config: {} },
+          { handlerType: 'oauth_protected_resource', config: { resource: '/api/mcp' } },
+        ],
+      },
+    });
+    expect(discoveryFor([mcp, preceded], { ruleId: 'mcp', tools })).toEqual({
+      kind: 'custom',
+      rulePath: `${PROTECTED_RESOURCE_PATH}*`,
+    });
+  });
+
   it('reports an app-shipped well-known rule as custom, and nothing as none', () => {
     expect(discoveryFor([mcp, shipped], { ruleId: 'mcp', tools })).toEqual({
       kind: 'custom',

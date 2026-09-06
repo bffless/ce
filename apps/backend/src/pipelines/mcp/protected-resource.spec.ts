@@ -32,12 +32,66 @@ const prmStep = (config: Record<string, unknown>, isEnabled?: boolean) => ({
 
 describe('protected-resource helpers', () => {
   describe('servesProtectedResourceDocument', () => {
-    it('is true only for a pipeline rule with an enabled oauth_protected_resource step', () => {
+    it('is true only for a well-known rule whose first enabled step is oauth_protected_resource', () => {
       expect(servesProtectedResourceDocument(undefined)).toBe(false);
       expect(servesProtectedResourceDocument(rule({ proxyType: 'external_proxy' }))).toBe(false);
+      // The step somewhere in an unrelated rule's pipeline widens nothing (PR #761 review).
       expect(
         servesProtectedResourceDocument(
           rule({
+            pathPattern: '/api/reports*',
+            pipelineConfig: {
+              name: 'reports',
+              steps: [
+                { name: 'q', handlerType: 'data_query', config: {} },
+                prmStep({ resource: '/api/mcp' }),
+              ],
+            },
+          }),
+        ),
+      ).toBe(false);
+      expect(
+        servesProtectedResourceDocument(
+          rule({
+            pathPattern: '/api/reports*',
+            pipelineConfig: { name: 'reports', steps: [prmStep({ resource: '/api/mcp' })] },
+          }),
+        ),
+      ).toBe(false);
+      // Nor does a step that runs after another one on the well-known path.
+      expect(
+        servesProtectedResourceDocument(
+          rule({
+            pathPattern: `${PROTECTED_RESOURCE_PATH}*`,
+            pipelineConfig: {
+              name: 'p',
+              steps: [
+                { name: 'q', handlerType: 'data_query', config: {} },
+                prmStep({ resource: '/api/mcp' }),
+              ],
+            },
+          }),
+        ),
+      ).toBe(false);
+      // A disabled step ahead of it does not count as "before".
+      expect(
+        servesProtectedResourceDocument(
+          rule({
+            pathPattern: `${PROTECTED_RESOURCE_PATH}*`,
+            pipelineConfig: {
+              name: 'p',
+              steps: [
+                { name: 'q', handlerType: 'data_query', config: {}, isEnabled: false },
+                prmStep({ resource: '/api/mcp' }),
+              ],
+            },
+          }),
+        ),
+      ).toBe(true);
+      expect(
+        servesProtectedResourceDocument(
+          rule({
+            pathPattern: `${PROTECTED_RESOURCE_PATH}*`,
             pipelineConfig: {
               name: 'app-shipped',
               steps: [
@@ -50,12 +104,16 @@ describe('protected-resource helpers', () => {
       ).toBe(false);
       expect(
         servesProtectedResourceDocument(
-          rule({ pipelineConfig: { name: 'p', steps: [prmStep({ resource: '/api/mcp' })] } }),
+          rule({
+            pathPattern: `${PROTECTED_RESOURCE_PATH}*`,
+            pipelineConfig: { name: 'p', steps: [prmStep({ resource: '/api/mcp' })] },
+          }),
         ),
       ).toBe(true);
       expect(
         servesProtectedResourceDocument(
           rule({
+            pathPattern: `${PROTECTED_RESOURCE_PATH}*`,
             pipelineConfig: { name: 'p', steps: [prmStep({ resource: '/api/mcp' }, false)] },
           }),
         ),
@@ -77,16 +135,16 @@ describe('protected-resource helpers', () => {
       pipelineConfig: { name: 'b', steps: [prmStep({ resource: '/api/b' })] },
     });
 
-    it('prefers the rule at the path-suffixed form, then the bare path', () => {
+    it('prefers the rule at the path-suffixed form, then the bare path — and only a step naming that resource', () => {
       expect(findProtectedResourceConfig([a, bare], '/api/a')).toMatchObject({
         resource: '/api/a',
       });
-      expect(findProtectedResourceConfig([a, bare], '/api/b')).toMatchObject({
+      expect(findProtectedResourceConfig([a, bare], '/api/b/')).toMatchObject({
         resource: '/api/b',
       });
-      expect(findProtectedResourceConfig([a, bare], '/api/zzz')).toMatchObject({
-        resource: '/api/b',
-      });
+      // The bare rule publishes /api/b; a client naming another resource gets nothing here
+      // (and falls back to the fetch), not /api/b's scopes.
+      expect(findProtectedResourceConfig([a, bare], '/api/zzz')).toBeUndefined();
     });
 
     it('is undefined when the matched /.well-known rule is an app-shipped function, or absent', () => {
