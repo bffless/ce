@@ -7,16 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.51](https://github.com/bffless/ce/compare/v0.4.50...v0.4.51) (2026-09-06)
 
-
 ### Added
-
-* **app-tokens:** allow minting a token that never expires (neverExpires) ([#756](https://github.com/bffless/ce/issues/756)) ([9d9a32c](https://github.com/bffless/ce/commit/9d9a32cc8bba3a6244fb26892932127cd26fd6d8)), closes [#755](https://github.com/bffless/ce/issues/755)
-* **app-tokens:** paginate GET /api/app-tokens and hide revoked/expired tokens by default ([#757](https://github.com/bffless/ce/issues/757)) ([c491266](https://github.com/bffless/ce/commit/c491266f41b0f2fc9d7958720b9eec0194fa8405)), closes [#754](https://github.com/bffless/ce/issues/754)
-
+- app-tokens: paginate GET /api/app-tokens and hide revoked/expired tokens by default ([#757](https://github.com/bffless/ce/pull/757), thanks @toshimoto821)
+- app-tokens: allow minting a token that never expires (neverExpires) ([#756](https://github.com/bffless/ce/pull/756), thanks @toshimoto821)
 
 ### Fixed
-
-* **frontend:** mock paged app-token list in the never-expires test ([#759](https://github.com/bffless/ce/issues/759)) ([84ea36c](https://github.com/bffless/ce/commit/84ea36c13ba47dbd909892ff320071c9151f0b66))
+- frontend: mock paged app-token list in the never-expires test ([#759](https://github.com/bffless/ce/pull/759), thanks @toshimoto821)
 
 ## [0.4.50](https://github.com/bffless/ce/compare/v0.4.49...v0.4.50) (2026-09-05)
 
