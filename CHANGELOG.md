@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.50](https://github.com/bffless/ce/compare/v0.4.49...v0.4.50) (2026-09-05)
 
-
 ### Added
-
-* **auth:** exchange an app token for a session (POST /api/auth/session/from-app-token) ([#752](https://github.com/bffless/ce/issues/752)) ([89f1b12](https://github.com/bffless/ce/commit/89f1b120d069160848abf96a6b6faf36c2a490e4))
+- auth: exchange an app token for a session (POST /api/auth/session/from-app-token) ([#752](https://github.com/bffless/ce/pull/752), thanks @toshimoto821)
 
 ## [0.4.49](https://github.com/bffless/ce/compare/v0.4.48...v0.4.49) (2026-09-05)
 
