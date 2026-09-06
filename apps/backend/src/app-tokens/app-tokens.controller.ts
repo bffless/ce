@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -15,7 +16,12 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { PublicProjectAccess } from '../auth/decorators/public-project-access.decorator';
 import { AppTokensService } from './app-tokens.service';
-import { CreateAppTokenDto, CreateAppTokenResponse, ListAppTokensResponse } from './app-tokens.dto';
+import {
+  CreateAppTokenDto,
+  CreateAppTokenResponse,
+  ListAppTokensQueryDto,
+  ListAppTokensResponse,
+} from './app-tokens.dto';
 
 /**
  * A member's app tokens. Session-only on purpose: a credential cannot beget
@@ -49,9 +55,17 @@ export class AppTokensController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List my app tokens' })
-  async list(@CurrentUser() user: CurrentUserData): Promise<ListAppTokensResponse> {
-    return { data: await this.appTokens.listMine(user.id) };
+  @ApiOperation({
+    summary: 'List my app tokens',
+    description:
+      'Newest first, one page per call: follow `nextCursor` (as `?cursor=`) until it is null. Revoked and expired tokens are omitted unless `includeInactive=true`.',
+  })
+  async list(
+    @CurrentUser() user: CurrentUserData,
+    @Query() query: ListAppTokensQueryDto,
+  ): Promise<ListAppTokensResponse> {
+    const { items, nextCursor } = await this.appTokens.listMine(user.id, query);
+    return { data: items, nextCursor };
   }
 
   @Delete(':id')

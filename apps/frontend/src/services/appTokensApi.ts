@@ -27,11 +27,33 @@ export interface CreateAppTokenResponse {
   token: string; // shown once
 }
 
+export interface ListAppTokensArgs {
+  /** Also list revoked and expired tokens; the server omits them by default. */
+  includeInactive?: boolean;
+}
+
+/** One page of `GET /api/app-tokens`; `nextCursor` is null on the last page. */
+export interface ListAppTokensPage {
+  data: AppToken[];
+  nextCursor: string | null;
+}
+
 export const appTokensApi = api.injectEndpoints({
   endpoints: (builder) => ({
-    listAppTokens: builder.query<AppToken[], void>({
-      query: () => '/api/app-tokens',
-      transformResponse: (response: { data: AppToken[] }) => response.data,
+    // Cursor-paged: each page is fetched with the previous page's `nextCursor`;
+    // a mint or revoke invalidates the whole list and every loaded page refetches.
+    listAppTokens: builder.infiniteQuery<ListAppTokensPage, ListAppTokensArgs, string | null>({
+      infiniteQueryOptions: {
+        initialPageParam: null,
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
+      },
+      query: ({ queryArg, pageParam }) => {
+        const params = new URLSearchParams();
+        if (queryArg.includeInactive) params.set('includeInactive', 'true');
+        if (pageParam) params.set('cursor', pageParam);
+        const qs = params.toString();
+        return `/api/app-tokens${qs ? `?${qs}` : ''}`;
+      },
       providesTags: [{ type: 'AppToken' as const, id: 'LIST' }],
     }),
     createAppToken: builder.mutation<CreateAppTokenResponse, CreateAppTokenDto>({
@@ -45,5 +67,8 @@ export const appTokensApi = api.injectEndpoints({
   }),
 });
 
-export const { useListAppTokensQuery, useCreateAppTokenMutation, useRevokeAppTokenMutation } =
-  appTokensApi;
+export const {
+  useListAppTokensInfiniteQuery,
+  useCreateAppTokenMutation,
+  useRevokeAppTokenMutation,
+} = appTokensApi;

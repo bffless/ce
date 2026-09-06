@@ -16,7 +16,7 @@ describe('AppTokensController', () => {
   it('delegates to the service and shapes the responses', async () => {
     const service = {
       create: jest.fn().mockResolvedValue({ view: { id: 't' }, raw: 'bfat_x' }),
-      listMine: jest.fn().mockResolvedValue([{ id: 't' }]),
+      listMine: jest.fn().mockResolvedValue({ items: [{ id: 't' }], nextCursor: 'c' }),
       revoke: jest.fn().mockResolvedValue(undefined),
     };
     const controller = new AppTokensController(service as never);
@@ -29,7 +29,11 @@ describe('AppTokensController', () => {
       project: 'o/r',
       scopes: ['a:b'],
     });
-    await expect(controller.list(user)).resolves.toEqual({ data: [{ id: 't' }] });
+    await expect(controller.list(user, { includeInactive: true, limit: 10 })).resolves.toEqual({
+      data: [{ id: 't' }],
+      nextCursor: 'c',
+    });
+    expect(service.listMine).toHaveBeenCalledWith('u', { includeInactive: true, limit: 10 });
     await expect(controller.revoke(user, 't')).resolves.toBeUndefined();
     expect(service.revoke).toHaveBeenCalledWith('t', 'u');
   });

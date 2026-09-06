@@ -1,19 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
+  IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { SCOPE_PATTERN } from '../pipelines/types';
 
 export const APP_TOKEN_DEFAULT_TTL_DAYS = 90;
 export const APP_TOKEN_MAX_TTL_DAYS = 365;
+export const APP_TOKEN_LIST_DEFAULT_LIMIT = 50;
+export const APP_TOKEN_LIST_MAX_LIMIT = 200;
 
 export class CreateAppTokenDto {
   @ApiProperty({
@@ -56,6 +64,41 @@ export class CreateAppTokenDto {
   expiresAt?: string;
 }
 
+/** Query for `GET /api/app-tokens`. Every parameter is optional: a bare GET lists the first page of active tokens. */
+export class ListAppTokensQueryDto {
+  @ApiPropertyOptional({
+    description:
+      'Also list revoked and expired tokens. Off by default: only tokens that can still authenticate are returned.',
+    default: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  includeInactive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Page size.',
+    default: APP_TOKEN_LIST_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: APP_TOKEN_LIST_MAX_LIMIT,
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseInt(value, 10))
+  @IsInt()
+  @Min(1)
+  @Max(APP_TOKEN_LIST_MAX_LIMIT)
+  limit?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'The `nextCursor` of the previous page (the id of its last token). Pages are newest-first.',
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
+}
+
 export interface AppTokenView {
   id: string;
   name: string;
@@ -78,4 +121,6 @@ export interface CreateAppTokenResponse {
 
 export interface ListAppTokensResponse {
   data: AppTokenView[];
+  /** Pass as `?cursor=` to fetch the next page; `null` on the last page. */
+  nextCursor: string | null;
 }
