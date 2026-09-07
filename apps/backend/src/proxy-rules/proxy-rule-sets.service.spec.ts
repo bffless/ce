@@ -2409,7 +2409,38 @@ describe('ProxyRuleSetsService', () => {
         expect(mockProxyRuleSetRevisionsService.capture).not.toHaveBeenCalled();
       });
 
-      it('warn: a plain-http target to a public host (the protocol rule) is a warning on this door, not a 400', async () => {
+      // The static rules the sync DTO does NOT enforce — a target that names a
+      // private / link-local address outright — reach this method over HTTP
+      // (proxy-rule-sets-target-guard-http.spec.ts proves the pipe lets them
+      // through) and follow the mode here, unlike the UI door's hard 400.
+      it('warn: a target naming a link-local address outright (a static rule the DTO does not enforce) is a warning on this door, not a 400', async () => {
+        delete process.env.OUTBOUND_URL_GUARD;
+        freshSet();
+
+        const result = await sync(syncDto({ rules: [rule('/api/*', 'https://169.254.169.254')] }));
+
+        expect(result.warnings).toEqual([
+          'Rule "/api/*": target https://169.254.169.254 — Target URL cannot point to internal services; allowed because OUTBOUND_URL_GUARD=warn',
+        ]);
+        expect(mockDnsLookup).not.toHaveBeenCalled();
+        expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+      });
+
+      it('reject: such a static failure fails the push like any other target failure', async () => {
+        process.env.OUTBOUND_URL_GUARD = 'reject';
+        mockDb.__setResults([[mockProject]]);
+
+        await expect(
+          sync(syncDto({ rules: [rule('/api/*', 'https://10.0.0.1')] })),
+        ).rejects.toThrow(/OUTBOUND_URL_GUARD=reject: Rule "\/api\/\*".*internal IP ranges/);
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+      });
+
+      // Over HTTP the sync DTO (`IsValidSyncTargetUrl`) 400s a plain-http
+      // public target before this method runs. It still reaches here from
+      // rollbackToRevision, which builds its DTO by cast and replays a stored
+      // snapshot — there the protocol rule follows the mode.
+      it('warn: a plain-http public target arriving without the DTO pipe (rollback replay) is a warning, not a 400', async () => {
         delete process.env.OUTBOUND_URL_GUARD;
         freshSet();
 
@@ -2420,16 +2451,6 @@ describe('ProxyRuleSetsService', () => {
         ]);
         expect(mockDnsLookup).not.toHaveBeenCalled();
         expect(mockDb.transaction).toHaveBeenCalledTimes(1);
-      });
-
-      it('reject: the protocol rule fails the push like any other target failure', async () => {
-        process.env.OUTBOUND_URL_GUARD = 'reject';
-        mockDb.__setResults([[mockProject]]);
-
-        await expect(
-          sync(syncDto({ rules: [rule('/api/*', 'http://public.example')] })),
-        ).rejects.toThrow(/OUTBOUND_URL_GUARD=reject: Rule "\/api\/\*".*must use HTTPS/);
-        expect(mockDb.transaction).not.toHaveBeenCalled();
       });
 
       it('dryRun reports the same warnings without writing', async () => {
