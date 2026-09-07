@@ -20,6 +20,7 @@ import {
   projects,
   users,
 } from '../db/schema';
+import type { OAuthClient } from '../db/schema/oauth-clients.schema';
 import { hashToken } from '../auth/app-token.util';
 import { AppTokensService } from '../app-tokens/app-tokens.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -32,6 +33,8 @@ import {
 import { SCOPE_PATTERN } from '../pipelines/types';
 import { OAuthError } from './oauth.errors';
 import { isValidVerifier, verifyS256 } from './pkce.util';
+import { isAcceptableRedirect } from './redirect-uri.util';
+import { ClientMetadataService } from './client-metadata.service';
 import {
   AuthorizationServerMetadata,
   PendingRequest,
@@ -61,10 +64,11 @@ interface ResolvedResource {
 
 /**
  * CE's built-in OAuth 2.1 authorization server (ADR-0005): dynamic client
- * registration for public clients, the authorization-code grant with PKCE
- * `S256`, RFC 8707 `resource` → the CE project the token is bound to, refresh
- * rotation with family revocation, RFC 7009 revocation. The access token *is*
- * an app token, minted through `AppTokensService`.
+ * registration for public clients, Client ID Metadata Documents (an `https://`
+ * client_id, #741), the authorization-code grant with PKCE `S256`, RFC 8707
+ * `resource` → the CE project the token is bound to, refresh rotation with
+ * family revocation, RFC 7009 revocation. The access token *is* an app token,
+ * minted through `AppTokensService`.
  */
 @Injectable()
 export class OAuthService {
@@ -76,6 +80,7 @@ export class OAuthService {
     private readonly permissions: PermissionsService,
     @Inject(forwardRef(() => RuleInvokerService))
     private readonly rules: RuleInvokerService,
+    private readonly clientMetadata: ClientMetadataService,
   ) {}
 
   private get jwtSecret(): string {
@@ -117,6 +122,7 @@ export class OAuthService {
       token_endpoint_auth_methods_supported: ['none'],
       scopes_supported: [],
       resource_indicators_supported: true,
+      client_id_metadata_document_supported: true,
     };
   }
 
@@ -181,11 +187,7 @@ export class OAuthService {
     const clientId = str(params.client_id);
     const redirectUri = str(params.redirect_uri);
     if (!clientId) throw new OAuthError('invalid_request', 'client_id is required');
-    const [client] = await db
-      .select()
-      .from(oauthClients)
-      .where(eq(oauthClients.clientId, clientId))
-      .limit(1);
+    const client = await this.clientFor(clientId);
     if (!client) throw new OAuthError('invalid_client', 'unknown client_id', 401);
     if (!redirectUri || !client.redirectUris.includes(redirectUri)) {
       throw new OAuthError('invalid_request', 'redirect_uri is not registered for this client');
@@ -210,7 +212,7 @@ export class OAuthService {
     if (scopes.length === 0) throw new OAuthError('invalid_scope', 'the resource offers no scopes');
     const now = Math.floor(Date.now() / 1000);
     const pending: PendingRequest = {
-      clientId,
+      clientId: client.clientId,
       clientName: client.clientName,
       redirectUri,
       codeChallenge: challenge,
@@ -227,6 +229,47 @@ export class OAuthService {
       algorithm: 'HS256',
     });
     return { request, pending };
+  }
+
+  /**
+   * The client a `client_id` names: a registered row, or — when it is a URL —
+   * the Client ID Metadata Document behind it (fetched through the SSRF guard,
+   * cached), upserted into `oauth_clients` under the uuid derived from the URL
+   * so codes, refresh tokens and the App Tokens page (`OAuth: <client_name>`)
+   * work exactly as for a registered client. A URL that fails the guard or
+   * whose document is invalid throws `invalid_client`, as an unknown uuid does.
+   */
+  private async clientFor(clientId: string): Promise<OAuthClient | undefined> {
+    if (!this.clientMetadata.isClientIdUrl(clientId)) {
+      const [client] = await db
+        .select()
+        .from(oauthClients)
+        .where(eq(oauthClients.clientId, clientId))
+        .limit(1);
+      return client;
+    }
+    const doc = await this.clientMetadata.resolve(clientId);
+    const row = {
+      clientId: this.clientMetadata.clientIdFor(clientId),
+      clientName: doc.clientName,
+      redirectUris: doc.redirectUris,
+      grantTypes: doc.grantTypes,
+    };
+    await db
+      .insert(oauthClients)
+      .values(row)
+      .onConflictDoUpdate({
+        target: oauthClients.clientId,
+        set: {
+          clientName: row.clientName,
+          redirectUris: row.redirectUris,
+          grantTypes: row.grantTypes,
+        },
+      });
+    this.logger.debug(
+      `OAuth client ${clientId} → ${row.clientId} (${row.clientName}) from its metadata document`,
+    );
+    return { ...row, createdAt: new Date(), lastUsedAt: null };
   }
 
   readPending(request: string): PendingRequest {
@@ -313,7 +356,8 @@ export class OAuthService {
   private async exchangeCode(body: Record<string, unknown>): Promise<TokenResponse> {
     const code = str(body.code);
     const verifier = body.code_verifier;
-    const clientId = str(body.client_id);
+    // A metadata-document client presents its URL; the code was issued to the uuid it maps to.
+    const clientId = this.clientMetadata.normalizeClientId(str(body.client_id));
     if (!code || !clientId)
       throw new OAuthError('invalid_request', 'code and client_id are required');
     if (!isValidVerifier(verifier))
@@ -370,7 +414,10 @@ export class OAuthService {
       .where(eq(oauthRefreshTokens.tokenHash, hashToken(presented)))
       .limit(1);
     if (!row) throw new OAuthError('invalid_grant', 'unknown refresh_token');
-    if (str(body.client_id) && str(body.client_id) !== row.clientId)
+    if (
+      str(body.client_id) &&
+      this.clientMetadata.normalizeClientId(str(body.client_id)) !== row.clientId
+    )
       throw new OAuthError('invalid_grant', 'client mismatch');
     if (row.rotatedAt) {
       // A rotated token presented again: the family is compromised — revoke it all (OAuth 2.1 §4.3.1).
@@ -631,19 +678,6 @@ export function familyOfCode(codeHash: string): string {
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
-}
-
-function isAcceptableRedirect(uri: string): boolean {
-  try {
-    const u = new URL(uri);
-    if (u.protocol === 'https:') return true;
-    return (
-      u.protocol === 'http:' &&
-      (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]')
-    );
-  } catch {
-    return false;
-  }
 }
 
 const defaultFetch: FetchLike = async (url, init) => {

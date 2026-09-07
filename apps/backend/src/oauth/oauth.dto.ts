@@ -81,6 +81,8 @@ export interface AuthorizationServerMetadata {
   token_endpoint_auth_methods_supported: string[];
   scopes_supported: string[];
   resource_indicators_supported: boolean;
+  /** draft-ietf-oauth-client-id-metadata-document: an `https://` client_id is fetched as the client's metadata. */
+  client_id_metadata_document_supported: boolean;
 }
 
 export interface TokenResponse {

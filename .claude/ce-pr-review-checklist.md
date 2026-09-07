@@ -281,6 +281,20 @@ controls `bypassVisibility` already), but a silent widening.
 **Learned from:** PR #761, 2026-09-06 — the first cut scanned all steps for `oauth_protected_resource`;
 narrowed in the same PR to well-known rules whose first enabled step is the handler.
 
+### A fetch of a caller-supplied URL needs the whole SSRF guard, not a hostname regex
+**Surface:** any new server-side fetch whose URL comes from a request — `apps/backend/src/oauth/client-metadata.service.ts`
+(Client ID Metadata Documents), `proxy-rules.service.ts` `validateTargetUrl` (rule targets), future webhook /
+import-by-URL features.
+**Check:** Does the guard (1) require https and a domain name (never an IP literal, never a local /
+`.internal` / `.svc` / `.cluster.local` suffix), (2) resolve the name and refuse if *any* address is
+non-public — including IPv6 forms that embed an IPv4 (`::ffff:`, NAT64, 6to4), (3) pin the connection to the
+vetted addresses so the name is not resolved again between check and connect, (4) refuse redirects, and
+(5) bound the read with a timeout and a byte cap? A hostname/regex check alone (the `validateTargetUrl`
+TODO) is bypassed by a public name that resolves to `169.254.169.254`.
+**Why:** The backend runs next to the metadata endpoint, the database, MinIO and the other pods; one
+missed step turns "fetch my client metadata" into "read the instance credentials".
+**Learned from:** #741, 2026-09-07 — the triage comment flagged it before the code was written.
+
 ---
 
 ## Entry template
