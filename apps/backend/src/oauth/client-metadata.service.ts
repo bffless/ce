@@ -308,7 +308,11 @@ function isPublicV6(ip: string): boolean {
   }
   if (groups[0] === '0064' && groups[1] === 'ff9b') return isPublicV4(v4Of(groups[6], groups[7])); // NAT64
   if (first === 0x2002) return isPublicV4(v4Of(groups[1], groups[2])); // 6to4
-  if (groups[0] === '2001' && groups[1] === '0db8') return false; // documentation
+  if (groups[0] === '0100' && groups.slice(1, 4).every((g) => g === '0000')) return false; // 100::/64 discard
+  if (groups[0] === '2001' && groups[1] === '0db8') return false; // 2001:db8::/32 documentation
+  if (groups[0] === '2001' && groups[1] === '0002' && groups[2] === '0000') return false; // 2001:2::/48 benchmarking
+  if (groups[0] === '2001' && (parseInt(groups[1], 16) & 0xfff0) === 0x0010) return false; // 2001:10::/28 ORCHID
+  if ((first & 0xfff0) === 0x3ff0) return false; // 3fff::/20 documentation
   if ((first & 0xfe00) === 0xfc00) return false; // fc00::/7 unique local
   if ((first & 0xffc0) === 0xfe80) return false; // fe80::/10 link-local
   if ((first & 0xff00) === 0xff00) return false; // ff00::/8 multicast

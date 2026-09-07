@@ -244,6 +244,10 @@ describe('ClientMetadataService — Client ID Metadata Documents (#741)', () => 
       '::ffff:8.8.8.8',
       '64:ff9b::808:808',
       '2002:808:808::',
+      '2001:3::1',
+      '2001:20::1',
+      '100:1::1',
+      '4000::1',
     ])('%s is public', (ip) => expect(isPublicAddress(ip)).toBe(true));
     it.each([
       '127.0.0.1',
@@ -272,6 +276,12 @@ describe('ClientMetadataService — Client ID Metadata Documents (#741)', () => 
       'fe80::1%eth0',
       'ff02::1',
       '2001:db8::1',
+      '100::1',
+      '2001:2::1',
+      '2001:10::1',
+      '2001:1f::1',
+      '3fff::1',
+      '3fff:ffff::1',
       'not-an-ip',
     ])('%s is not', (ip) => expect(isPublicAddress(ip)).toBe(false));
     it('a public IPv4 is not public when 172.15 / 172.32 style neighbours are mistaken for private', () => {
