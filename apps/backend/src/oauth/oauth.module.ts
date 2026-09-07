@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { OAuthController } from './oauth.controller';
 import { OAuthMetadataController } from './oauth-metadata.controller';
 import { OAuthService } from './oauth.service';
+import { ClientMetadataService } from './client-metadata.service';
 import { AppTokensModule } from '../app-tokens/app-tokens.module';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
@@ -12,7 +13,7 @@ import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
   // resolution reads that step's config through RuleInvokerService.
   imports: [AppTokensModule, PermissionsModule, forwardRef(() => ProxyRulesModule)],
   controllers: [OAuthController, OAuthMetadataController],
-  providers: [OAuthService],
+  providers: [OAuthService, ClientMetadataService],
   exports: [OAuthService],
 })
 export class OAuthModule {}

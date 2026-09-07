@@ -16,6 +16,7 @@ jest.mock('../db/client', () => {
     'returning',
     'update',
     'set',
+    'onConflictDoUpdate',
   ])
     chain[m] = jest.fn();
   return { db: chain };
@@ -41,6 +42,15 @@ const mapping = {
 };
 const project = { id: 'p1', owner: 'bffless', name: 'workflow', displayName: 'Workflow' };
 const user = { id: 'u1', email: 'm@example.com', role: 'user', disabled: false };
+const CIMD_URL = 'https://claude.ai/.well-known/oauth-client-metadata';
+const CIMD_UUID = '11111111-2222-4333-8444-555555555555';
+const cimdDoc = {
+  clientId: CIMD_URL,
+  clientName: 'Claude (hosted)',
+  redirectUris: ['https://claude.ai/api/mcp/auth_callback'],
+  grantTypes: ['authorization_code', 'refresh_token'],
+  tokenEndpointAuthMethod: 'none',
+};
 const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 const prm = async () => ({
   status: 200,
@@ -66,16 +76,25 @@ function make(configOverrides: Record<string, string | undefined> = {}) {
   const permissions = { getUserProjectRole: jest.fn().mockResolvedValue('contributor') };
   // The alias's effective rules; empty means "no oauth_protected_resource step" → the fetch path.
   const rules = { effectiveRules: jest.fn().mockResolvedValue([]) };
+  // Client ID Metadata Documents (#741): a URL client_id maps to a fixed uuid; the document is stubbed.
+  const clientMetadata = {
+    isClientIdUrl: (id: string) => /^https?:\/\//i.test(id),
+    clientIdFor: jest.fn().mockReturnValue(CIMD_UUID),
+    normalizeClientId: (id: string) => (/^https?:\/\//i.test(id) ? CIMD_UUID : id),
+    resolve: jest.fn().mockResolvedValue(cimdDoc),
+  };
   return {
     service: new OAuthService(
       config as never,
       appTokens as never,
       permissions as never,
       rules as never,
+      clientMetadata as never,
     ),
     appTokens,
     permissions,
     rules,
+    clientMetadata,
   };
 }
 
@@ -129,6 +148,7 @@ describe('OAuthService', () => {
     expect(m.code_challenge_methods_supported).toEqual(['S256']);
     expect(m.token_endpoint_auth_methods_supported).toEqual(['none']);
     expect(m.resource_indicators_supported).toBe(true);
+    expect(m.client_id_metadata_document_supported).toBe(true);
   });
 
   describe('registerClient', () => {
@@ -403,6 +423,133 @@ describe('OAuthService', () => {
       expect(() => service.readPending(expired)).toThrow(OAuthError);
       const other = jwt.sign({ kind: 'other' }, 'test-secret');
       expect(() => service.readPending(other)).toThrow(OAuthError);
+    });
+  });
+
+  describe('client_id as a Client ID Metadata Document URL (#741)', () => {
+    const cimdParams = (over: Record<string, unknown> = {}) =>
+      authorizeParams({
+        client_id: CIMD_URL,
+        redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+        ...over,
+      });
+
+    it('resolves the document, upserts the client under the uuid the URL maps to, and binds the pending request to that uuid', async () => {
+      const { service, clientMetadata } = make();
+      mockDb.limit.mockResolvedValueOnce([mapping]).mockResolvedValueOnce([project]);
+      const { pending } = await service.beginAuthorization(cimdParams(), prm);
+      expect(clientMetadata.resolve).toHaveBeenCalledWith(CIMD_URL);
+      // no oauth_clients SELECT — the document is the client
+      expect(mockDb.select).toHaveBeenCalledTimes(2);
+      expect(mockDb.insert).toHaveBeenCalledTimes(1);
+      expect(mockDb.values).toHaveBeenCalledWith({
+        clientId: CIMD_UUID,
+        clientName: 'Claude (hosted)',
+        redirectUris: ['https://claude.ai/api/mcp/auth_callback'],
+        grantTypes: ['authorization_code', 'refresh_token'],
+      });
+      expect(mockDb.onConflictDoUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          set: expect.objectContaining({ clientName: 'Claude (hosted)' }),
+        }),
+      );
+      expect(pending).toMatchObject({
+        clientId: CIMD_UUID,
+        clientName: 'Claude (hosted)',
+        redirectUri: 'https://claude.ai/api/mcp/auth_callback',
+        projectId: 'p1',
+      });
+    });
+    it('refuses a redirect_uri the document does not list, before anything is redirected', async () => {
+      const { service } = make();
+      await expect(
+        service.beginAuthorization(cimdParams({ redirect_uri: 'https://evil.example/cb' }), prm),
+      ).rejects.toMatchObject({ error: 'invalid_request' });
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+    it('a document that fails the guard is an unknown client: nothing is upserted', async () => {
+      const { service, clientMetadata } = make();
+      clientMetadata.resolve.mockRejectedValueOnce(
+        new OAuthError('invalid_client', 'the client_id host is not publicly routable', 401),
+      );
+      await expect(service.beginAuthorization(cimdParams(), prm)).rejects.toMatchObject({
+        error: 'invalid_client',
+        status: 401,
+      });
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+    it('the token endpoint maps the URL to the same uuid the code was issued to — and to nothing else', async () => {
+      const { service, appTokens, clientMetadata } = make();
+      const codeRow = {
+        codeHash: hashToken('the-code'),
+        clientId: CIMD_UUID,
+        userId: 'u1',
+        projectId: 'p1',
+        scopes: ['workflow:read'],
+        codeChallenge: challengeOf(verifier),
+        redirectUri: 'https://claude.ai/api/mcp/auth_callback',
+        resource: 'https://workflow.j5s.dev/api/workflow/mcp',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+      };
+      mockDb.limit
+        .mockResolvedValueOnce([codeRow])
+        .mockResolvedValueOnce([project])
+        .mockResolvedValueOnce([{ ...client, clientId: CIMD_UUID, clientName: 'Claude (hosted)' }])
+        .mockResolvedValueOnce([user]);
+      mockDb.where.mockReturnValue(mockDb);
+      mockDb.returning.mockResolvedValueOnce([{ codeHash: hashToken('the-code') }]);
+      const body = {
+        grant_type: 'authorization_code',
+        code: 'the-code',
+        client_id: CIMD_URL,
+        redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+        code_verifier: verifier,
+      };
+      const out = await service.token(body);
+      expect(out.access_token).toBe('bfat_raw');
+      // no fetch at the token endpoint: the code + verifier is the proof
+      expect(clientMetadata.resolve).not.toHaveBeenCalled();
+      expect(appTokens.create).toHaveBeenCalledWith(
+        'u1',
+        'user',
+        expect.objectContaining({ name: 'OAuth: Claude (hosted)' }),
+        expect.objectContaining({ kind: 'oauth', clientId: CIMD_UUID }),
+      );
+      // another URL maps to another uuid → not this code's client
+      clientMetadata.normalizeClientId = (id: string) => (id === CIMD_URL ? CIMD_UUID : 'other');
+      mockDb.limit.mockResolvedValueOnce([codeRow]);
+      await expect(
+        service.token({ ...body, client_id: 'https://other.example/metadata.json' }),
+      ).rejects.toMatchObject({ error: 'invalid_grant' });
+    });
+    it('a refresh presented with the URL matches the family issued to its uuid', async () => {
+      const { service } = make();
+      mockDb.limit
+        .mockResolvedValueOnce([
+          {
+            tokenHash: hashToken('bfrt_old'),
+            familyId: 'fam-1',
+            clientId: CIMD_UUID,
+            userId: 'u1',
+            projectId: 'p1',
+            scopes: ['workflow:read'],
+            appTokenId: 'tok-old',
+            expiresAt: new Date(Date.now() + 60_000),
+            rotatedAt: null,
+          },
+        ])
+        .mockResolvedValueOnce([project])
+        .mockResolvedValueOnce([{ ...client, clientId: CIMD_UUID }])
+        .mockResolvedValueOnce([user]);
+      mockDb.where.mockReturnValue(mockDb);
+      mockDb.returning.mockResolvedValueOnce([{ tokenHash: 'h1' }]);
+      const out = await service.token({
+        grant_type: 'refresh_token',
+        refresh_token: 'bfrt_old',
+        client_id: CIMD_URL,
+      });
+      expect(out.refresh_token).toMatch(/^bfrt_/);
     });
   });
 

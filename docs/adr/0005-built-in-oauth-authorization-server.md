@@ -63,3 +63,18 @@ was rejected: `scopes_supported` is the authorize flow's allowlist, and an emerg
 an unrelated rule edit can change is not something to publish implicitly. Hand-written
 documents keep working; `OAuthService` reads the step's config directly and fetches only for
 those.
+
+**Amended 2026-09-07 (#741).** A client may also identify itself by URL — a _Client ID
+Metadata Document_ (draft-ietf-oauth-client-id-metadata-document), the mode claude.ai's
+connector dialog marks "Recommended": `client_id` is an `https://` URL, CE fetches the
+RFC 7591 metadata from it, requires the document's own `client_id` to equal that URL, and
+proceeds as for a registered public client. No new table: the URL maps deterministically to
+an `oauth_clients` uuid (uuid v5 under a pinned namespace) that is upserted with the
+document's name and redirect URIs, so the uuid foreign keys on codes and refresh tokens hold
+and the App Tokens page shows the client's name. The token endpoint maps the URL to that
+uuid without fetching — the code plus PKCE verifier is the proof. Because the server fetches
+a caller-supplied URL, the fetch is guarded (`ClientMetadataService`): https only, a domain
+name never an IP literal, no local/cluster suffixes, every resolved address must be public
+and the socket is pinned to those addresses, no redirects, 5 s timeout, 64 KiB cap; the
+authorize endpoint (where the fetch happens) already requires a member session. Registration
+stays as the fallback for hosts without hosted metadata.
