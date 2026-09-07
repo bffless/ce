@@ -123,8 +123,10 @@ describe('SessionAuthGuard', () => {
 
       mockGetSession.mockResolvedValue(undefined);
 
+      // "unauthorised" is the body SuperTokens used to write for no session; the
+      // frontend's baseQueryWithReauth reads it as "skip refresh, go to /login".
       await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
-        new UnauthorizedException('Authentication required'),
+        new UnauthorizedException('unauthorised'),
       );
       expect(mockResponse.redirect).not.toHaveBeenCalled();
       expect(mockRequest.session).toBeUndefined();
@@ -154,13 +156,27 @@ describe('SessionAuthGuard', () => {
         type: 'TRY_REFRESH_TOKEN',
       });
 
-      it('returns 401 to an API request without redirecting', async () => {
+      it('returns 401 "try refresh token" to an API request without redirecting', async () => {
         jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
         mockRequest.headers = { accept: 'application/json' };
         mockGetSession.mockRejectedValue(tryRefresh);
 
+        // The body SuperTokens used to write; the frontend attempts a silent refresh on it.
         await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
-          new UnauthorizedException('Authentication required'),
+          new UnauthorizedException('try refresh token'),
+        );
+        expect(mockResponse.redirect).not.toHaveBeenCalled();
+      });
+
+      it('maps any other getSession error to a plain 401 "unauthorised"', async () => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+        mockRequest.headers = { accept: 'application/json' };
+        mockGetSession.mockRejectedValue(
+          Object.assign(new Error('token theft'), { type: 'TOKEN_THEFT_DETECTED' }),
+        );
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('unauthorised'),
         );
         expect(mockResponse.redirect).not.toHaveBeenCalled();
       });
@@ -179,6 +195,71 @@ describe('SessionAuthGuard', () => {
           302,
           '/login?redirect=%2Fdashboard&tryRefresh=true',
         );
+      });
+    });
+
+    describe('browser vs. API classification', () => {
+      beforeEach(() => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+        mockGetSession.mockResolvedValue(undefined);
+      });
+
+      it('treats a request with no Accept header at all as an API client (401, no redirect)', async () => {
+        mockRequest.headers = {};
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('unauthorised'),
+        );
+        expect(mockResponse.redirect).not.toHaveBeenCalled();
+      });
+
+      it("treats the SPA's own fetch() profile (Accept: */*, Sec-Fetch-Mode: cors) as an API client", async () => {
+        // This is what apps/frontend/src/services/api.ts actually sends: it sets no
+        // Accept header. A redirect here would be followed by fetch() to /login's
+        // HTML and the frontend's 401-keyed silent refresh would never run.
+        mockRequest.headers = { accept: '*/*', 'sec-fetch-mode': 'cors' };
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('unauthorised'),
+        );
+        expect(mockResponse.redirect).not.toHaveBeenCalled();
+      });
+
+      it('treats Sec-Fetch-Mode: navigate as a browser navigation (redirect)', async () => {
+        mockRequest.headers = { accept: '*/*', 'sec-fetch-mode': 'navigate' };
+        mockRequest.originalUrl = '/api/auth/session';
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          UnauthorizedException,
+        );
+        expect(mockResponse.redirect).toHaveBeenCalledTimes(1);
+        expect(mockResponse.redirect).toHaveBeenCalledWith(
+          302,
+          '/login?redirect=%2Fapi%2Fauth%2Fsession&tryRefresh=true',
+        );
+      });
+
+      it('treats curl -H "Accept: text/html" (the issue repro) as a browser navigation', async () => {
+        mockRequest.headers = { accept: 'text/html' };
+        mockRequest.originalUrl = '/api/auth/session';
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          UnauthorizedException,
+        );
+        expect(mockResponse.redirect).toHaveBeenCalledTimes(1);
+      });
+
+      it('still prefers the explicit API signals over navigation hints', async () => {
+        mockRequest.headers = {
+          accept: 'text/html',
+          'sec-fetch-mode': 'navigate',
+          'x-requested-with': 'XMLHttpRequest',
+        };
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('unauthorised'),
+        );
+        expect(mockResponse.redirect).not.toHaveBeenCalled();
       });
     });
 

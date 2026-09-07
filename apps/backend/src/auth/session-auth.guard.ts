@@ -9,6 +9,28 @@ import { users } from '../db/schema';
 export const IS_PUBLIC_KEY = 'isPublic';
 
 /**
+ * 401 body texts for a failed session check. These are the exact strings
+ * SuperTokens' own error handler used to write (it answered these requests
+ * itself before issue #775), and the frontend's `baseQueryWithReauth`
+ * (apps/frontend/src/services/api.ts) keys on them: "unauthorised" means no
+ * session at all (skip the refresh attempt, go to /login); anything else on a
+ * 401 triggers a silent POST /api/auth/session/refresh and retry. Keep them.
+ */
+export const SESSION_401_NO_SESSION = 'unauthorised';
+export const SESSION_401_TRY_REFRESH = 'try refresh token';
+
+/**
+ * Map a `getSession()` rejection to the 401 body SuperTokens would have sent.
+ * A present-but-expired access token is `TRY_REFRESH_TOKEN` (the client should
+ * refresh); every other failure (token theft, unparsable token, ...) is a plain
+ * "unauthorised". Compared by string so specs can mock the session module.
+ */
+export function sessionErrorMessage(error: unknown): string {
+  const type = (error as { type?: unknown } | null)?.type;
+  return type === 'TRY_REFRESH_TOKEN' ? SESSION_401_TRY_REFRESH : SESSION_401_NO_SESSION;
+}
+
+/**
  * Session-based authentication guard using SuperTokens
  * Verifies that a valid session exists for the request
  *
@@ -35,27 +57,30 @@ export class SessionAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
 
+    // Read the session with sessionRequired: false (same as OptionalAuthGuard).
+    // The express verifySession() middleware must NOT be used here: on a missing
+    // session it writes SuperTokens' own 401 and never calls back, so anything the
+    // guard does afterwards is a second write (ERR_HTTP_HEADERS_SENT, issue #775).
+    // getSession resolves undefined when there is no session and rejects for a
+    // present-but-invalid token (TRY_REFRESH_TOKEN) - both take the failure path,
+    // which owns the response (401 JSON or /login redirect).
+    let session: SessionContainer | undefined;
     try {
-      // Read the session with sessionRequired: false (same as OptionalAuthGuard).
-      // The express verifySession() middleware must NOT be used here: on a missing
-      // session it writes SuperTokens' own 401 and never calls back, so anything the
-      // guard does afterwards is a second write (ERR_HTTP_HEADERS_SENT, issue #775).
-      // getSession resolves undefined when there is no session and rejects for a
-      // present-but-invalid token (TRY_REFRESH_TOKEN) - both take the failure path
-      // below, which owns the response (401 JSON or /login redirect).
-      const session: SessionContainer | undefined = await getSession(request, response, {
-        sessionRequired: false,
-      });
+      session = await getSession(request, response, { sessionRequired: false });
+    } catch (error) {
+      return this.handleAuthFailure(request, response, sessionErrorMessage(error));
+    }
 
-      if (!session) {
-        throw new UnauthorizedException('No active session');
-      }
+    if (!session) {
+      return this.handleAuthFailure(request, response, SESSION_401_NO_SESSION);
+    }
 
-      // verifySession() used to set request.session as a side effect; getSession()
-      // does not. Handlers (AuthController.getSession, SetupController) and the
-      // global EmailVerificationGuard still read request.session, so restore it.
-      (request as Request & { session?: SessionContainer }).session = session;
+    // verifySession() used to set request.session as a side effect; getSession()
+    // does not. Handlers (AuthController.getSession, SetupController) and the
+    // global EmailVerificationGuard still read request.session, so restore it.
+    (request as Request & { session?: SessionContainer }).session = session;
 
+    try {
       const userId = session.getUserId();
 
       // Fetch user from database to get role
@@ -75,20 +100,20 @@ export class SessionAuthGuard implements CanActivate {
 
       return true;
     } catch {
-      // Session validation failed - handle based on request type
-      return this.handleAuthFailure(request, response);
+      // User lookup failed - treated as an auth failure, as before
+      return this.handleAuthFailure(request, response, 'Authentication required');
     }
   }
 
   /**
    * Handle authentication failure based on request type
-   * - API requests: throw UnauthorizedException (returns 401 JSON)
-   * - Browser requests: redirect to /login?tryRefresh=true (frontend handles refresh)
+   * - API requests: throw UnauthorizedException (returns 401 JSON with `message`)
+   * - Browser navigations: redirect to /login?tryRefresh=true (frontend handles refresh)
    */
-  private handleAuthFailure(request: Request, response: Response): never {
+  private handleAuthFailure(request: Request, response: Response, message: string): never {
     // API requests should get a 401 JSON response, not a redirect
     if (this.isApiRequest(request)) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException(message);
     }
 
     // Browser request - redirect to login with tryRefresh param
@@ -109,8 +134,16 @@ export class SessionAuthGuard implements CanActivate {
   }
 
   /**
-   * Determines if this is an API request (expects JSON response)
-   * vs a browser request (can handle redirects)
+   * Determines if this is an API request (expects a 401 JSON body) vs. a
+   * top-level browser navigation (can act on a redirect).
+   *
+   * Only a real navigation may get the redirect. The admin SPA's own fetch()
+   * calls send no Accept header (browser default `*\/*`) and `Sec-Fetch-Mode:
+   * cors`/`same-origin`; if those were redirected, fetch() would follow the 302
+   * to /login's HTML and the frontend's silent-refresh flow (which keys on a
+   * 401) would never run. So the default is API, and "browser" requires a
+   * positive signal: `Sec-Fetch-Mode: navigate` (set by browsers on navigation,
+   * never by fetch/XHR) or an Accept header that asks for text/html.
    */
   private isApiRequest(request: Request): boolean {
     const acceptHeader = request.headers.accept || '';
@@ -136,13 +169,15 @@ export class SessionAuthGuard implements CanActivate {
       return true;
     }
 
-    // Accept header starts with application/* (not text/html) suggests API client
-    // Note: Browsers typically send Accept: text/html,application/xhtml+xml,... first
-    if (acceptHeader.startsWith('application/') && !acceptHeader.includes('text/html')) {
-      return true;
+    // Top-level browser navigation: can act on a redirect
+    if (request.headers['sec-fetch-mode'] === 'navigate') {
+      return false;
+    }
+    if (acceptHeader.includes('text/html')) {
+      return false;
     }
 
-    // Default: treat as browser request (can handle redirects)
-    return false;
+    // Default: API client (fetch()/XHR with Accept: */*, curl, no Accept at all)
+    return true;
   }
 }

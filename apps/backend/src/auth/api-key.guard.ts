@@ -5,7 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { getSession, SessionContainer } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';
 import { apiKeys, users } from '../db/schema';
-import { IS_PUBLIC_KEY } from './session-auth.guard';
+import { IS_PUBLIC_KEY, SESSION_401_NO_SESSION, sessionErrorMessage } from './session-auth.guard';
 import { requestUserFromAppToken, resolveAppToken } from './app-token.util';
 
 /**
@@ -95,16 +95,17 @@ export class ApiKeyGuard implements CanActivate {
     // The express verifySession() middleware must NOT be used here: on a missing
     // session it writes SuperTokens' own 401 and never calls back, so the guard's
     // own throw becomes a second write (ERR_HTTP_HEADERS_SENT, issue #775).
+    // The 401 body texts mirror what SuperTokens used to write; the frontend's
+    // silent-refresh flow keys on them (see session-auth.guard.ts).
     let session: SessionContainer | undefined;
     try {
       session = await getSession(request, response, { sessionRequired: false });
-    } catch {
-      // Present-but-invalid token (e.g. TRY_REFRESH_TOKEN): same 401 as no session.
-      throw new UnauthorizedException('Invalid or expired session');
+    } catch (error) {
+      throw new UnauthorizedException(sessionErrorMessage(error));
     }
 
     if (!session) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException(SESSION_401_NO_SESSION);
     }
 
     // verifySession() used to set request.session as a side effect; getSession()

@@ -93,9 +93,10 @@ describe('ApiKeyGuard', () => {
 
       // When no API key is provided, the guard falls back to session authentication.
       // With no session it throws its own 401 (never a redirect - this guard is for
-      // programmatic access) and leaves the response untouched for the filter.
+      // programmatic access) and leaves the response untouched for the filter. The
+      // body is the one SuperTokens used to write; the frontend keys on it.
       await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
-        new UnauthorizedException('Authentication required'),
+        new UnauthorizedException('unauthorised'),
       );
       expect(mockGetSession).toHaveBeenCalledWith(mockRequest, mockResponse, {
         sessionRequired: false,
@@ -131,13 +132,13 @@ describe('ApiKeyGuard', () => {
         expect(mockRequest.session).toBe(session);
       });
 
-      it('throws 401 when getSession rejects (present but invalid token)', async () => {
+      it('throws 401 "try refresh token" when getSession rejects with TRY_REFRESH_TOKEN', async () => {
         mockGetSession.mockRejectedValue(
-          Object.assign(new Error('try refresh token'), { type: 'TRY_REFRESH_TOKEN' }),
+          Object.assign(new Error('expired'), { type: 'TRY_REFRESH_TOKEN' }),
         );
 
         await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
-          new UnauthorizedException('Invalid or expired session'),
+          new UnauthorizedException('try refresh token'),
         );
         expect(mockResponse.redirect).not.toHaveBeenCalled();
         expect(mockRequest.user).toBeUndefined();
@@ -251,7 +252,7 @@ describe('ApiKeyGuard', () => {
         mockResolveAppToken.mockResolvedValueOnce(null);
 
         await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
-          new UnauthorizedException('Authentication required'),
+          new UnauthorizedException('unauthorised'),
         );
         expect(mockResolveAppToken).toHaveBeenCalledWith('Bearer eyJhbGciOi.jwt');
       });
