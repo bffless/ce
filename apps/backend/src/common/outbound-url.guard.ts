@@ -18,6 +18,10 @@ import { isIP } from 'node:net';
  * (`warn`, the default, logs and allows; `reject` throws) for the places
  * where a hard refusal would break self-hosters whose targets legitimately
  * resolve to private space (split-horizon DNS, in-cluster services).
+ * {@link vetOutboundHosts} is 2 in bulk (one lookup per distinct name, a
+ * few in flight at a time) and {@link enforceOutboundVerdict} the policy on
+ * its own, for callers that vet a whole rule set before writing it (#780).
+ * Every lookup is bounded by {@link OUTBOUND_LOOKUP_TIMEOUT_MS}.
  * The CIMD guard does not use the policy: a client_id is never allowed to
  * point inward.
  */
@@ -34,11 +38,61 @@ export interface ResolvedAddress {
 /** Every address a name resolves to (`dns.lookup` with `all: true`), or throws. */
 export type HostLookup = (hostname: string) => Promise<ResolvedAddress[]>;
 
+/**
+ * How long one {@link lookupAddresses} call may take. `dns.lookup` has no
+ * timeout of its own (it is a blocking `getaddrinfo` on the libuv thread
+ * pool), so a resolver that hangs would hold a rule create — or a whole
+ * `rules push` — open indefinitely. A lookup that overruns is `timeout`:
+ * unverifiable, and the caller's policy decides what that means (#780).
+ */
+export const OUTBOUND_LOOKUP_TIMEOUT_MS = 3_000;
+
+/** Thrown by a {@link withLookupTimeout}-wrapped lookup that overran its budget. */
+export class OutboundLookupTimeoutError extends Error {
+  constructor(
+    public readonly hostname: string,
+    public readonly timeoutMs: number,
+  ) {
+    super(`lookup of ${hostname} timed out after ${timeoutMs} ms`);
+    this.name = 'OutboundLookupTimeoutError';
+  }
+}
+
+/**
+ * Bound a {@link HostLookup} to `timeoutMs`. The underlying lookup is not
+ * cancelled (Node offers no way to), only abandoned; the timer is unref'd so
+ * it never keeps the process alive.
+ */
+export function withLookupTimeout(
+  lookup: HostLookup,
+  timeoutMs: number = OUTBOUND_LOOKUP_TIMEOUT_MS,
+): HostLookup {
+  return (hostname) =>
+    new Promise<ResolvedAddress[]>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new OutboundLookupTimeoutError(hostname, timeoutMs)),
+        timeoutMs,
+      );
+      timer.unref?.();
+      lookup(hostname).then(
+        (addresses) => {
+          clearTimeout(timer);
+          resolve(addresses);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+}
+
 export type OutboundHostVerdict =
   | { ok: true; addresses: ResolvedAddress[] }
   | {
       ok: false;
-      reason: 'unresolved' | 'non-public';
+      /** `timeout` — the lookup overran {@link OUTBOUND_LOOKUP_TIMEOUT_MS}; the host could not be verified either way. */
+      reason: 'unresolved' | 'non-public' | 'timeout';
       addresses: ResolvedAddress[];
       detail: string;
     };
@@ -82,17 +136,21 @@ export function isExplicitlyInternalHost(hostname: string): boolean {
   );
 }
 
-/** `dns.lookup` with every address, in resolver order; the default {@link HostLookup}. */
-export const lookupAddresses: HostLookup = async (hostname) => {
+/**
+ * `dns.lookup` with every address, in resolver order, bounded to
+ * {@link OUTBOUND_LOOKUP_TIMEOUT_MS}; the default {@link HostLookup}.
+ */
+export const lookupAddresses: HostLookup = withLookupTimeout(async (hostname) => {
   const found = await dnsLookup(hostname, { all: true, verbatim: true });
   return found.map((a) => ({ address: a.address, family: a.family as 4 | 6 }));
-};
+});
 
 /**
  * Resolve `hostname` and judge every address it has. An IP literal (with or
  * without IPv6 brackets) is judged as itself. A name that does not resolve,
- * or resolves to nothing, is `unresolved`: it cannot be vetted, and the
- * caller decides whether that is fatal.
+ * or resolves to nothing, is `unresolved`; one whose lookup overran the
+ * budget is `timeout`. Neither can be vetted, and the caller decides whether
+ * that is fatal.
  */
 export async function vetOutboundHost(
   hostname: string,
@@ -106,6 +164,14 @@ export async function vetOutboundHost(
     try {
       addresses = await lookup(host);
     } catch (error) {
+      if (error instanceof OutboundLookupTimeoutError) {
+        return {
+          ok: false,
+          reason: 'timeout',
+          addresses: [],
+          detail: `${host} could not be verified (${error.message})`,
+        };
+      }
       return {
         ok: false,
         reason: 'unresolved',
@@ -149,9 +215,23 @@ export async function guardOutboundHost(
   hostname: string,
   opts: GuardOutboundHostOptions,
 ): Promise<OutboundHostVerdict> {
-  const mode = opts.mode ?? outboundUrlGuardMode();
   const verdict = await vetOutboundHost(hostname, opts.lookup);
+  return enforceOutboundVerdict(verdict, opts);
+}
+
+/**
+ * The `OUTBOUND_URL_GUARD` policy applied to an already-computed verdict —
+ * the second half of {@link guardOutboundHost}, for callers that resolve in
+ * bulk ({@link vetOutboundHosts}) and judge afterwards. A passing verdict is
+ * returned silently; a failing one is logged and returned under `warn`, or
+ * thrown as a `BadRequestException` naming the env var under `reject`.
+ */
+export function enforceOutboundVerdict(
+  verdict: OutboundHostVerdict,
+  opts: Omit<GuardOutboundHostOptions, 'lookup'>,
+): OutboundHostVerdict {
   if (verdict.ok) return verdict;
+  const mode = opts.mode ?? outboundUrlGuardMode();
   if (mode === 'reject') {
     throw new BadRequestException(
       `${opts.subject}: ${verdict.detail}; refused by ${OUTBOUND_URL_GUARD_ENV}=reject`,
@@ -161,6 +241,52 @@ export async function guardOutboundHost(
     `${opts.subject}: ${verdict.detail}; allowed because ${OUTBOUND_URL_GUARD_ENV}=${mode}`,
   );
   return verdict;
+}
+
+/** How many names {@link vetOutboundHosts} resolves at once. */
+export const OUTBOUND_LOOKUP_CONCURRENCY = 4;
+
+export interface VetOutboundHostsOptions {
+  lookup?: HostLookup;
+  /** Defaults to {@link OUTBOUND_LOOKUP_CONCURRENCY}. */
+  concurrency?: number;
+}
+
+/**
+ * {@link vetOutboundHost} over many names at once — a rule set can carry
+ * dozens of targets, most sharing a few hosts. Each distinct hostname is
+ * resolved exactly once (keyed as given, after the same bracket/trailing-dot
+ * normalisation the single vet applies) and at most `concurrency` lookups are
+ * in flight at a time. The result maps every *input* hostname to its verdict.
+ */
+export async function vetOutboundHosts(
+  hostnames: Iterable<string>,
+  opts: VetOutboundHostsOptions = {},
+): Promise<Map<string, OutboundHostVerdict>> {
+  const normalise = (h: string) =>
+    h
+      .replace(/^\[|\]$/g, '')
+      .replace(/\.$/, '')
+      .toLowerCase();
+  const inputs = [...hostnames];
+  const byKey = new Map<string, Promise<OutboundHostVerdict>>();
+  const unique = [...new Set(inputs.map(normalise))];
+  const concurrency = Math.max(1, opts.concurrency ?? OUTBOUND_LOOKUP_CONCURRENCY);
+
+  let next = 0;
+  const worker = async () => {
+    while (next < unique.length) {
+      const key = unique[next++];
+      const verdict = vetOutboundHost(key, opts.lookup);
+      byKey.set(key, verdict);
+      await verdict;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, unique.length) }, worker));
+
+  const out = new Map<string, OutboundHostVerdict>();
+  for (const input of inputs) out.set(input, await byKey.get(normalise(input))!);
+  return out;
 }
 
 /**

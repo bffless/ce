@@ -397,6 +397,23 @@ describe('ProxyRulesService', () => {
       await expect(createWith('https://169.254.169.254')).rejects.toThrow(BadRequestException);
       expect(mockDnsLookup).not.toHaveBeenCalled();
     });
+
+    // #780 moved the check into target-url.guard.ts and let rules push /
+    // import / copy gate the protocol rule by mode. This door must not follow:
+    // a plain-http target to a non-internal host has always been a hard 400.
+    it.each(['warn', 'reject'])(
+      'UI create with http://public.example is a 400 regardless of mode (%s)',
+      async (mode) => {
+        process.env.OUTBOUND_URL_GUARD = mode;
+        successfulCreate();
+
+        await expect(createWith('http://public.example')).rejects.toThrow(
+          'Target URL must use HTTPS, or HTTP for internal services (*.svc, localhost)',
+        );
+        expect(mockDnsLookup).not.toHaveBeenCalled();
+        expect(warnSpy).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('create', () => {
