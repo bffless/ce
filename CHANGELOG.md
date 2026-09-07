@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.54](https://github.com/bffless/ce/compare/v0.4.53...v0.4.54) (2026-09-07)
 
-
 ### Fixed
-
-* **backend:** break the AppTokensModule import cycle that crashes startup since v0.4.52 ([#773](https://github.com/bffless/ce/issues/773)) ([0304577](https://github.com/bffless/ce/commit/0304577587da74c9e6a8aff629b5c2919491b3d4))
+- backend: break the AppTokensModule import cycle that crashes startup since v0.4.52 ([#773](https://github.com/bffless/ce/pull/773), thanks @toshimoto821)
 
 ## [0.4.53](https://github.com/bffless/ce/compare/v0.4.52...v0.4.53) (2026-09-07)
 
