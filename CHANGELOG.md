@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.52](https://github.com/bffless/ce/compare/v0.4.51...v0.4.52) (2026-09-07)
+
+
+### Added
+
+* **pipelines:** oauth_protected_resource handler serves the RFC 9728 document ([#760](https://github.com/bffless/ce/issues/760)) ([#761](https://github.com/bffless/ce/issues/761)) ([f833072](https://github.com/bffless/ce/commit/f8330728cbcea1000b51951a4badd9d21cf6e766))
+
 ## [0.4.51](https://github.com/bffless/ce/compare/v0.4.50...v0.4.51) (2026-09-06)
 
 ### Added
