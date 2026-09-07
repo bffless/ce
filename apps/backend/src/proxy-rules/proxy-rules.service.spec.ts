@@ -4,13 +4,19 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { lookup as dnsLookup } from 'node:dns/promises';
 import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { EmailService } from '../email/email.service';
 import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service';
+
+// The outbound URL guard resolves rule targets (#770); no real DNS in tests.
+jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
+const mockDnsLookup = dnsLookup as unknown as jest.Mock;
 
 // Mock the db client - using factory function for hoisting
 jest.mock('../db/client', () => {
@@ -154,6 +160,9 @@ describe('ProxyRulesService', () => {
 
     service = module.get<ProxyRulesService>(ProxyRulesService);
     jest.clearAllMocks();
+    // Default: a public name resolves to a public address, so the existing
+    // https://api.example.com fixtures pass the guard silently.
+    mockDnsLookup.mockResolvedValue([{ address: '104.18.1.1', family: 4 }]);
   });
 
   describe('validateTargetUrl', () => {
@@ -282,6 +291,111 @@ describe('ProxyRulesService', () => {
           'admin',
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('validateTargetUrl — resolve-and-vet under OUTBOUND_URL_GUARD (#770)', () => {
+    const envBefore = process.env.OUTBOUND_URL_GUARD;
+    let warnSpy: jest.SpyInstance;
+
+    // rule set lookup (limit), findRuleByPattern (orderBy), getNextOrder (orderBy);
+    // insert returning falls back to [{ id: 'test-id' }]
+    const successfulCreate = () => mockDb.__setResults([[createMockRuleSet()], [], []]);
+    const createWith = (targetUrl: string) =>
+      service.create(
+        { ruleSetId: 'rule-set-1', pathPattern: '/api/*', targetUrl },
+        'user-id',
+        'admin',
+      );
+
+    beforeEach(() => {
+      warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+      warnSpy.mockRestore();
+      if (envBefore === undefined) delete process.env.OUTBOUND_URL_GUARD;
+      else process.env.OUTBOUND_URL_GUARD = envBefore;
+    });
+
+    it.each([
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://backend.default.svc:8080',
+      'http://backend.default.svc.cluster.local:8080',
+      'https://backend.default.svc',
+    ])(
+      'does not resolve the declared-internal target %s, in reject mode too',
+      async (targetUrl) => {
+        process.env.OUTBOUND_URL_GUARD = 'reject';
+        successfulCreate();
+
+        await expect(createWith(targetUrl)).resolves.toBeDefined();
+        expect(mockDnsLookup).not.toHaveBeenCalled();
+        expect(warnSpy).not.toHaveBeenCalled();
+      },
+    );
+
+    it('passes a public name that resolves to public addresses silently', async () => {
+      process.env.OUTBOUND_URL_GUARD = 'reject';
+      mockDnsLookup.mockResolvedValue([
+        { address: '104.18.1.1', family: 4 },
+        { address: '2606:4700::6810:1', family: 6 },
+      ]);
+      successfulCreate();
+
+      await expect(createWith('https://api.example.com')).resolves.toBeDefined();
+      expect(mockDnsLookup).toHaveBeenCalledWith(
+        'api.example.com',
+        expect.objectContaining({ all: true }),
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('warn (default): a public name resolving to a private address is logged and allowed', async () => {
+      delete process.env.OUTBOUND_URL_GUARD;
+      mockDnsLookup.mockResolvedValue([{ address: '169.254.169.254', family: 4 }]);
+      successfulCreate();
+
+      await expect(createWith('https://api.example.com')).resolves.toBeDefined();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const line = String(warnSpy.mock.calls[0][0]);
+      expect(line).toContain('rule set rule-set-1');
+      expect(line).toContain('https://api.example.com');
+      expect(line).toContain('169.254.169.254');
+      expect(line).toContain('OUTBOUND_URL_GUARD=warn');
+    });
+
+    it('reject: a public name resolving to a private address is a 400', async () => {
+      process.env.OUTBOUND_URL_GUARD = 'reject';
+      mockDnsLookup.mockResolvedValue([
+        { address: '104.18.1.1', family: 4 },
+        { address: '10.0.0.5', family: 4 },
+      ]);
+      successfulCreate();
+
+      const attempt = createWith('https://api.example.com');
+      await expect(attempt).rejects.toThrow(BadRequestException);
+      await expect(attempt).rejects.toThrow(/10\.0\.0\.5.*OUTBOUND_URL_GUARD=reject/);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('reject: applies on update when the target changes, naming the rule', async () => {
+      process.env.OUTBOUND_URL_GUARD = 'reject';
+      mockDnsLookup.mockResolvedValue([{ address: '192.168.1.10', family: 4 }]);
+      // findById (limit), rule set lookup (limit)
+      mockDb.__setResults([[createMockRule()], [createMockRuleSet()]]);
+
+      await expect(
+        service.update('rule-1', { targetUrl: 'https://intranet.example.com' }, 'user-id', 'admin'),
+      ).rejects.toThrow(/proxy rule rule-1.*192\.168\.1\.10/);
+    });
+
+    it('the string checks still reject before any lookup', async () => {
+      process.env.OUTBOUND_URL_GUARD = 'warn';
+      mockDb.__setResults([[createMockRuleSet()]]);
+
+      await expect(createWith('https://169.254.169.254')).rejects.toThrow(BadRequestException);
+      expect(mockDnsLookup).not.toHaveBeenCalled();
     });
   });
 

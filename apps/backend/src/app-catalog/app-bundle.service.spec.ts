@@ -1,8 +1,13 @@
 import { zipSync, strToU8 } from 'fflate';
 import { createHash } from 'crypto';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
+import { lookup as dnsLookup } from 'node:dns/promises';
 import { AppBundleService } from './app-bundle.service';
 import { TEST_MANIFEST } from './app-manifest.util.spec';
+
+// fetchBundle vets the bundle host through the outbound URL guard (#770); no real DNS in tests.
+jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
+const mockDnsLookup = dnsLookup as unknown as jest.Mock;
 
 function makeBundle(
   manifest: unknown = TEST_MANIFEST,
@@ -49,6 +54,8 @@ describe('AppBundleService', () => {
   beforeEach(() => {
     service = new AppBundleService();
     fetchSpy = jest.spyOn(globalThis, 'fetch');
+    // Default: the registry's bundle host resolves to a public address.
+    mockDnsLookup.mockReset().mockResolvedValue([{ address: '104.18.1.1', family: 4 }]);
   });
 
   afterEach(() => {
@@ -160,6 +167,105 @@ describe('AppBundleService', () => {
       const loaded = await service.loadFromBuffer(buf);
 
       expect(loaded.manifest).toEqual(TEST_MANIFEST);
+    });
+  });
+
+  describe('fetchBundle — bundle host under OUTBOUND_URL_GUARD (#770)', () => {
+    const envBefore = process.env.OUTBOUND_URL_GUARD;
+    let warnSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+      warnSpy.mockRestore();
+      if (envBefore === undefined) delete process.env.OUTBOUND_URL_GUARD;
+      else process.env.OUTBOUND_URL_GUARD = envBefore;
+    });
+
+    it('passes a public bundle URL silently and downloads it', async () => {
+      process.env.OUTBOUND_URL_GUARD = 'reject';
+      const { buf, sha256 } = makeBundle();
+      fetchSpy.mockResolvedValue(fetchResponse(buf));
+
+      const loaded = await service.fetchBundle('https://apps.bffless.dev/handoff.zip', sha256);
+
+      expect(loaded.sha256).toBe(sha256);
+      expect(mockDnsLookup).toHaveBeenCalledWith(
+        'apps.bffless.dev',
+        expect.objectContaining({ all: true }),
+      );
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('warn (default): a private-resolving bundle host is logged and still downloaded', async () => {
+      delete process.env.OUTBOUND_URL_GUARD;
+      mockDnsLookup.mockResolvedValue([{ address: '10.0.0.9', family: 4 }]);
+      const { buf, sha256 } = makeBundle();
+      fetchSpy.mockResolvedValue(fetchResponse(buf));
+
+      const loaded = await service.fetchBundle('https://registry.corp.example/handoff.zip', sha256);
+
+      expect(loaded.sha256).toBe(sha256);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const line = String(warnSpy.mock.calls[0][0]);
+      expect(line).toContain('app bundle https://registry.corp.example/handoff.zip');
+      expect(line).toContain('10.0.0.9');
+      expect(line).toContain('OUTBOUND_URL_GUARD=warn');
+    });
+
+    it('reject: a private-resolving bundle host fails with a clear error before any download', async () => {
+      process.env.OUTBOUND_URL_GUARD = 'reject';
+      mockDnsLookup.mockResolvedValue([{ address: '169.254.169.254', family: 4 }]);
+
+      const attempt = service.fetchBundle(
+        'https://registry.corp.example/handoff.zip',
+        'a'.repeat(64),
+      );
+      await expect(attempt).rejects.toThrow(BadRequestException);
+      await expect(attempt).rejects.toThrow(
+        /app bundle https:\/\/registry\.corp\.example\/handoff\.zip.*169\.254\.169\.254.*OUTBOUND_URL_GUARD=reject/,
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'https://localhost:8443/handoff.zip',
+      'https://127.0.0.1:8443/handoff.zip',
+      'https://registry.apps.svc/handoff.zip',
+      'https://registry.apps.svc.cluster.local/handoff.zip',
+    ])('a local registry at %s is exempt from the lookup, in reject mode too', async (url) => {
+      process.env.OUTBOUND_URL_GUARD = 'reject';
+      const { buf, sha256 } = makeBundle();
+      fetchSpy.mockResolvedValue(fetchResponse(buf));
+
+      await expect(service.fetchBundle(url, sha256)).resolves.toBeDefined();
+      expect(mockDnsLookup).not.toHaveBeenCalled();
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not vet (or fetch) when the sha is already cached', async () => {
+      const { buf, sha256 } = makeBundle();
+      fetchSpy.mockResolvedValue(fetchResponse(buf));
+      await service.fetchBundle('https://apps.bffless.dev/handoff.zip', sha256);
+      mockDnsLookup.mockClear();
+      process.env.OUTBOUND_URL_GUARD = 'reject';
+      mockDnsLookup.mockResolvedValue([{ address: '10.0.0.9', family: 4 }]);
+
+      await expect(
+        service.fetchBundle('https://apps.bffless.dev/handoff.zip', sha256),
+      ).resolves.toBeDefined();
+      expect(mockDnsLookup).not.toHaveBeenCalled();
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an unparseable bundle URL as a 400 rather than a fetch TypeError', async () => {
+      await expect(service.fetchBundle('not a url', 'a'.repeat(64))).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 

@@ -282,9 +282,12 @@ controls `bypassVisibility` already), but a silent widening.
 narrowed in the same PR to well-known rules whose first enabled step is the handler.
 
 ### A fetch of a caller-supplied URL needs the whole SSRF guard, not a hostname regex
-**Surface:** any new server-side fetch whose URL comes from a request — `apps/backend/src/oauth/client-metadata.service.ts`
-(Client ID Metadata Documents), `proxy-rules.service.ts` `validateTargetUrl` (rule targets), future webhook /
-import-by-URL features.
+**Surface:** any new server-side fetch whose URL comes from a request. The building blocks live in
+`apps/backend/src/common/outbound-url.guard.ts` (`isPublicAddress`, `vetOutboundHost`, `pinnedLookup`, `readCapped`,
+and the `OUTBOUND_URL_GUARD` warn/reject policy for places a hard refusal would break self-hosters); callers are
+`oauth/client-metadata.service.ts` (Client ID Metadata Documents — always refuses), `proxy-rules.service.ts`
+`validateTargetUrl` (rule targets) and `app-catalog/app-bundle.service.ts` (bundle URLs); future webhook /
+import-by-URL features should reuse them rather than re-implement a hostname check.
 **Check:** Does the guard (1) require https and a domain name (never an IP literal, never a local /
 `.internal` / `.svc` / `.cluster.local` suffix), (2) resolve the name and refuse if *any* address is
 non-public — including IPv6 forms that embed an IPv4 (`::ffff:`, NAT64, 6to4), (3) pin the connection to the

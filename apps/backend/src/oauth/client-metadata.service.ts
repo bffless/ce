@@ -1,10 +1,21 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { v5 as uuidv5 } from 'uuid';
+import {
+  isPublicAddress,
+  lookupAddresses,
+  pinnedLookup,
+  readCapped,
+  type ResolvedAddress,
+} from '../common/outbound-url.guard';
 import { OAuthError } from './oauth.errors';
 import { isAcceptableRedirect } from './redirect-uri.util';
+
+// The guard's building blocks live in common/outbound-url.guard.ts (#770) so
+// proxy-rule targets and app bundle URLs share them; re-exported here so the
+// oauth surface is unchanged.
+export { isPublicAddress, pinnedLookup, readCapped, type ResolvedAddress };
 
 /**
  * OAuth Client ID Metadata Documents (draft-ietf-oauth-client-id-metadata-document):
@@ -70,11 +81,6 @@ export interface ClientMetadataDocument {
   grantTypes: string[];
   /** What the document declares; CE treats every CIMD client as public regardless. */
   tokenEndpointAuthMethod: string;
-}
-
-export interface ResolvedAddress {
-  address: string;
-  family: 4 | 6;
 }
 
 export interface ClientMetadataResponse {
@@ -307,127 +313,8 @@ export function ttlFrom(cacheControl: string | null): number {
   return Math.min(Number(match[1]) * 1000, CIMD_MAX_TTL_MS);
 }
 
-/**
- * Is this a globally routable unicast address? Loopback, private (RFC 1918),
- * CGNAT, link-local (incl. the cloud metadata endpoint), unspecified,
- * multicast, reserved and documentation ranges are not; IPv6 forms that embed
- * an IPv4 address (mapped, 6to4, NAT64) are judged by the address they embed.
- */
-export function isPublicAddress(ip: string): boolean {
-  const family = isIP(ip);
-  if (family === 4) return isPublicV4(ip);
-  if (family === 6) return isPublicV6(ip);
-  return false;
-}
-
-function isPublicV4(ip: string): boolean {
-  const [a, b] = ip.split('.').map(Number);
-  if (a === 0 || a === 10 || a === 127) return false;
-  if (a === 100 && b >= 64 && b <= 127) return false;
-  if (a === 169 && b === 254) return false;
-  if (a === 172 && b >= 16 && b <= 31) return false;
-  if (a === 192 && (b === 0 || b === 168)) return false;
-  if (a === 198 && (b === 18 || b === 19)) return false;
-  if (a >= 224) return false;
-  return true;
-}
-
-function isPublicV6(ip: string): boolean {
-  const groups = expandV6(ip.toLowerCase());
-  if (!groups) return false;
-  const first = parseInt(groups[0], 16);
-  const v4Of = (hi: string, lo: string) => {
-    const h = parseInt(hi, 16);
-    const l = parseInt(lo, 16);
-    return `${h >> 8}.${h & 0xff}.${l >> 8}.${l & 0xff}`;
-  };
-  // ::/8 — unspecified, loopback, IPv4-compatible; ::ffff:0:0/96 — IPv4-mapped
-  if (first === 0) {
-    const mapped = groups.slice(0, 5).every((g) => g === '0000') && groups[5] === 'ffff';
-    return mapped ? isPublicV4(v4Of(groups[6], groups[7])) : false;
-  }
-  if (groups[0] === '0064' && groups[1] === 'ff9b') return isPublicV4(v4Of(groups[6], groups[7])); // NAT64
-  if (first === 0x2002) return isPublicV4(v4Of(groups[1], groups[2])); // 6to4
-  if (groups[0] === '0100' && groups.slice(1, 4).every((g) => g === '0000')) return false; // 100::/64 discard
-  if (groups[0] === '2001' && groups[1] === '0db8') return false; // 2001:db8::/32 documentation
-  if (groups[0] === '2001' && groups[1] === '0002' && groups[2] === '0000') return false; // 2001:2::/48 benchmarking
-  if (groups[0] === '2001' && (parseInt(groups[1], 16) & 0xfff0) === 0x0010) return false; // 2001:10::/28 ORCHID
-  if ((first & 0xfff0) === 0x3ff0) return false; // 3fff::/20 documentation
-  if ((first & 0xfe00) === 0xfc00) return false; // fc00::/7 unique local
-  if ((first & 0xffc0) === 0xfe80) return false; // fe80::/10 link-local
-  if ((first & 0xff00) === 0xff00) return false; // ff00::/8 multicast
-  return true;
-}
-
-/** The eight 4-hex-digit groups of an IPv6 address, or null when it does not parse. */
-function expandV6(ip: string): string[] | null {
-  let s = ip;
-  const zone = s.indexOf('%');
-  if (zone >= 0) s = s.slice(0, zone);
-  const v4 = s.match(/(\d+\.\d+\.\d+\.\d+)$/);
-  if (v4) {
-    const [a, b, c, d] = v4[1].split('.').map(Number);
-    s = `${s.slice(0, -v4[1].length)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
-  }
-  const halves = s.split('::');
-  if (halves.length > 2) return null;
-  const head = halves[0] ? halves[0].split(':') : [];
-  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
-  const missing = 8 - head.length - tail.length;
-  if (missing < 0 || (halves.length === 1 && missing !== 0)) return null;
-  const groups = [...head, ...(halves.length === 2 ? Array(missing).fill('0') : []), ...tail];
-  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null;
-  return groups.map((g) => g.padStart(4, '0'));
-}
-
-/**
- * Reads a body under a byte cap. Throws — and, by leaving the loop, cancels the
- * stream — the moment the cap is passed, so an oversized document never buffers.
- */
-export async function readCapped(
-  body: AsyncIterable<Uint8Array> | null,
-  maxBytes: number,
-): Promise<string> {
-  if (!body) return '';
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of body) {
-    total += chunk.byteLength;
-    if (total > maxBytes) throw new Error(`document exceeds ${maxBytes} bytes`);
-    chunks.push(Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
-/**
- * A `lookup` for the socket that answers from the vetted addresses only — the
- * name is never resolved again between the check and the connect. Node's
- * `net.connect` calls it with `{ all: true }` (happy eyeballs) or for one address.
- */
-export function pinnedLookup(addresses: ResolvedAddress[]) {
-  return (
-    _hostname: string,
-    options: { all?: boolean } | ((...args: unknown[]) => void),
-    callback?: (...args: unknown[]) => void,
-  ) => {
-    const done = (typeof options === 'function' ? options : callback) as (
-      ...args: unknown[]
-    ) => void;
-    const all = typeof options === 'object' && options !== null && options.all === true;
-    if (all)
-      done(
-        null,
-        addresses.map((a) => ({ address: a.address, family: a.family })),
-      );
-    else done(null, addresses[0].address, addresses[0].family);
-  };
-}
-
 const defaultTransport: ClientMetadataTransport = {
-  async lookup(hostname) {
-    const found = await dnsLookup(hostname, { all: true, verbatim: true });
-    return found.map((a) => ({ address: a.address, family: a.family as 4 | 6 }));
-  },
+  lookup: lookupAddresses,
   async fetch(url, { addresses, signal }) {
     const agent = new Agent({
       connect: { lookup: pinnedLookup(addresses) as never },
