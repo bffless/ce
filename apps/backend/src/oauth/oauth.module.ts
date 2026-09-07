@@ -8,10 +8,20 @@ import { PermissionsModule } from '../permissions/permissions.module';
 import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
 
 @Module({
-  // forwardRef: ProxyRulesModule → PipelinesModule → OAuthModule (the
-  // oauth_protected_resource step names the issuer); RFC 8707 `resource`
-  // resolution reads that step's config through RuleInvokerService.
-  imports: [AppTokensModule, PermissionsModule, forwardRef(() => ProxyRulesModule)],
+  // forwardRef on every import: this module sits inside the require cycle
+  // app → … → projects → pipelines → oauth → app-tokens → projects (#773).
+  // Today AppTokensModule and PermissionsModule happen to be fully evaluated
+  // by the time this decorator runs, but that depends on AppModule's import
+  // order, which is reordered deliberately for route precedence. Deferring
+  // all three means no reordering can bake `undefined` into this array.
+  // ProxyRulesModule → PipelinesModule → OAuthModule is the original cycle
+  // (the oauth_protected_resource step names the issuer; RFC 8707
+  // `resource` resolution reads that step's config through RuleInvokerService).
+  imports: [
+    forwardRef(() => AppTokensModule),
+    forwardRef(() => PermissionsModule),
+    forwardRef(() => ProxyRulesModule),
+  ],
   controllers: [OAuthController, OAuthMetadataController],
   providers: [OAuthService, ClientMetadataService],
   exports: [OAuthService],
