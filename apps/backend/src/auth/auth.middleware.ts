@@ -3,6 +3,7 @@ import { middleware } from 'supertokens-node/framework/express';
 import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { VisibilityService } from '../domains/visibility.service';
+import { isApiRequest } from '../common/request-kind';
 
 /**
  * Auth middleware that wraps SuperTokens middleware with additional
@@ -63,7 +64,7 @@ export class AuthMiddleware implements NestMiddleware {
           // UNLESS this is a public route on a public domain - then let it through
           // This prevents unnecessary pipeline/controller execution
           // Uses SuperTokens response format for consistency
-          if (this.isApiRequest(req)) {
+          if (isApiRequest(req)) {
             // Check if this is a public route on a public domain
             const isPublic = await this.isPublicRoute(req);
             if (isPublic) {
@@ -160,43 +161,6 @@ export class AuthMiddleware implements NestMiddleware {
     if (path.startsWith('/_bffless/auth')) {
       return true;
     }
-    return false;
-  }
-
-  /**
-   * Determines if this is an API request (expects JSON response)
-   * vs a browser request (can handle redirects)
-   */
-  private isApiRequest(req: Request): boolean {
-    const acceptHeader = req.headers.accept || '';
-    const contentType = req.headers['content-type'] || '';
-
-    // XHR/fetch requests typically want JSON
-    if (acceptHeader.includes('application/json')) {
-      return true;
-    }
-
-    // Requests sending JSON are likely API calls
-    if (contentType.includes('application/json')) {
-      return true;
-    }
-
-    // X-Requested-With header indicates AJAX
-    if (req.headers['x-requested-with'] === 'XMLHttpRequest') {
-      return true;
-    }
-
-    // API key header indicates programmatic access
-    if (req.headers['x-api-key']) {
-      return true;
-    }
-
-    // Accept header starts with application/* (not text/html) suggests API client
-    if (acceptHeader.startsWith('application/') && !acceptHeader.includes('text/html')) {
-      return true;
-    }
-
-    // Default: treat as browser request
     return false;
   }
 }

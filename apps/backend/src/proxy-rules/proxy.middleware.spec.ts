@@ -725,6 +725,55 @@ describe('ProxyMiddleware', () => {
       expect((res as any).redirect).not.toHaveBeenCalled();
     });
 
+    it('answers an anonymous fetch() caller with no Accept header with 401 JSON, never a redirect (#778)', async () => {
+      // An app's own fetch('/api/...') sends no Accept header (browser default */*)
+      // and Sec-Fetch-Mode: cors. A 302 here would be followed by fetch() into the
+      // login page's HTML with a 200 - the client never sees the 401 it keys on.
+      makePrivate();
+      const req = createMockRequest('/api/works', { accept: '*/*', 'sec-fetch-mode': 'cors' });
+      const res = createMockResponse();
+      (res as any).redirect = jest.fn();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/*', proxyType: 'pipeline' }),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ message: 'unauthorised' });
+      expect((res as any).redirect).not.toHaveBeenCalled();
+    });
+
+    it('still redirects an anonymous browser navigation to login', async () => {
+      makePrivate();
+      const req = createMockRequest('/api/works', {
+        accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
+        'sec-fetch-mode': 'navigate',
+        'x-forwarded-proto': 'https',
+      });
+      (req as any).originalUrl = '/api/works';
+      (req as any).get = jest.fn().mockReturnValue('studio.example.com');
+      const res = createMockResponse();
+      (res as any).redirect = jest.fn();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/*', proxyType: 'pipeline' }),
+      );
+
+      expect(result).toBe('blocked');
+      expect((res as any).redirect).toHaveBeenCalledTimes(1);
+      expect((res as any).redirect).toHaveBeenCalledWith(302, expect.stringContaining('/login'));
+      expect(res.status).not.toHaveBeenCalledWith(401);
+    });
+
     it('points an anonymous API caller at the resource metadata (RFC 9728) when the request came through a domain host', async () => {
       makePrivate();
       (mockVisibilityService as any).resolveAccessControlByDomain = jest

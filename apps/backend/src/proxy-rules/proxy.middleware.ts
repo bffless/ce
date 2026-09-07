@@ -49,6 +49,7 @@ import {
   resolveRuleSetIdsForAlias as resolveRuleSetIdsForAliasShared,
 } from './rule-resolution';
 import { servesProtectedResourceDocument } from '../pipelines/mcp/protected-resource';
+import { isApiRequest } from '../common/request-kind';
 
 interface ParsedPublicPath {
   owner: string;
@@ -636,7 +637,9 @@ export class ProxyMiddleware implements NestMiddleware {
       // Not authenticated
       this.logger.debug(`Proxy blocked: not authenticated for private ${aliasName || 'project'}`);
 
-      if (this.isApiRequest(req)) {
+      // A bearer credential (an app token) is never a browser; otherwise the
+      // shared classifier decides (only a real navigation gets the redirect).
+      if (req.headers.authorization || isApiRequest(req)) {
         // RFC 9728 §5.1: tell a bearer client where the resource's OAuth metadata is
         // (a /.well-known rule — an `oauth_protected_resource` step or an app-shipped
         // document), so a connector can start its flow.
@@ -716,48 +719,6 @@ export class ProxyMiddleware implements NestMiddleware {
       'WWW-Authenticate',
       `Bearer resource_metadata="https://${host.split(',')[0].trim()}/.well-known/oauth-protected-resource"`,
     );
-  }
-
-  /**
-   * Determines if this is an API request (expects JSON response)
-   * vs a browser request (can handle redirects)
-   */
-  private isApiRequest(req: Request): boolean {
-    const acceptHeader = req.headers.accept || '';
-    const contentType = req.headers['content-type'] || '';
-
-    // XHR/fetch requests typically want JSON
-    if (acceptHeader.includes('application/json')) {
-      return true;
-    }
-
-    // Requests sending JSON are likely API calls
-    if (contentType.includes('application/json')) {
-      return true;
-    }
-
-    // X-Requested-With header indicates AJAX
-    if (req.headers['x-requested-with'] === 'XMLHttpRequest') {
-      return true;
-    }
-
-    // API key header indicates programmatic access
-    if (req.headers['x-api-key']) {
-      return true;
-    }
-
-    // A bearer credential (an app token) is never a browser: 401 JSON, not a redirect
-    if (req.headers.authorization) {
-      return true;
-    }
-
-    // Accept header starts with application/* (not text/html) suggests API client
-    if (acceptHeader.startsWith('application/') && !acceptHeader.includes('text/html')) {
-      return true;
-    }
-
-    // Default: treat as browser request
-    return false;
   }
 
   /**
