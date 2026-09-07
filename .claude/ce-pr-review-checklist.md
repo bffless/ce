@@ -306,6 +306,40 @@ global limit allows.
 **Learned from:** #741, 2026-09-07 — the triage comment flagged it before the code was written;
 (6) from #768, 2026-09-07 — the CIMD fetch shipped (PR #764) with only the global throttle over it.
 
+### A guard moved from `verifySession()` to `getSession()` must still set `request.session`
+**Surface:** `apps/backend/src/auth/session-auth.guard.ts`, `apps/backend/src/auth/api-key.guard.ts`,
+and any other guard migrated off the SuperTokens express `verifySession()` middleware onto the
+recipe-level `getSession()`.
+**Check:** The express middleware sets `request.session` as a side effect; `getSession()` returns the
+container and sets nothing. Does the guard assign it back (`request.session = session`)? Grep for
+`req.session` / `request.session` outside the guard: `AuthController.getSession`, `change-password`,
+`login-methods`, `SetupController.adopt-session-user` 401 without it, and the global
+`EmailVerificationGuard` (`APP_GUARD`) treats a missing `request.session` as "unauthenticated, skip",
+silently disabling `ENABLE_EMAIL_VERIFICATION`.
+**Why:** Invisible to `tsc` (the field is typed optional) and to guard-level unit tests that mock
+`getSession` and assert only `request.user`. `session-request-contract.spec.ts` runs the guard and
+then the downstream handler / `EmailVerificationGuard` on the same request object to pin it.
+**Learned from:** PR #776, 2026-09-07 — the first push kept `getSession()`'s result local; caught by
+the CI review before merge.
+
+### A guard's "browser or API caller?" heuristic must default to API and match the bundled SPA's real headers
+**Surface:** `apps/backend/src/auth/session-auth.guard.ts` (`isApiRequest`) and any guard or middleware
+that branches response shape (401 JSON vs. redirect) on request headers — `email-verification.guard.ts`,
+`auth.middleware.ts`, `proxy.middleware.ts` carry sibling copies. The admin SPA's single `fetchBaseQuery`
+(`apps/frontend/src/services/api.ts`) sets no `Accept`, so its calls arrive as `Accept: */*`.
+**Check:** Does the "browser" branch require a positive navigation signal (`Sec-Fetch-Mode: navigate`,
+which browsers send only for top-level navigations and `fetch()`/XHR never do, or an `Accept` naming
+`text/html`), with everything else — bare `*/*`, no `Accept`, curl — treated as API? And does a spec
+cover the *default* header profile (no `Accept` at all), not only explicit `application/json` /
+`text/html`? Also: the 401 body texts `unauthorised` / `try refresh token` are a wire contract —
+`baseQueryWithReauth` reads "unauthorised" as "no session, skip refresh" and anything else as "refresh
+and retry". A guard that answers the request itself must keep emitting them.
+**Why:** `fetch()` follows a 302 transparently, so a redirect aimed at browsers turns into `/login`'s
+HTML with status 200 for the SPA: `result.error.status` becomes `PARSING_ERROR`, never `401`, and the
+silent-refresh path is skipped for every expired session. Nothing in `tsc` or a guard-level spec sees it.
+**Learned from:** PR #776, 2026-09-07 — moving the guards off `verifySession()` made a previously dead
+classification branch live; the first cut redirected `Accept: */*` and replaced the body texts.
+
 ---
 
 ## Entry template

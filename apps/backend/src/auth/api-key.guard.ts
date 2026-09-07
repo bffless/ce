@@ -2,11 +2,10 @@ import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from
 import { Reflector } from '@nestjs/core';
 import { eq } from 'drizzle-orm';
 import * as bcrypt from 'bcrypt';
-import { verifySession } from 'supertokens-node/recipe/session/framework/express';
-import { SessionContainer } from 'supertokens-node/recipe/session';
+import { getSession, SessionContainer } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';
 import { apiKeys, users } from '../db/schema';
-import { IS_PUBLIC_KEY } from './session-auth.guard';
+import { IS_PUBLIC_KEY, SESSION_401_NO_SESSION, sessionErrorMessage } from './session-auth.guard';
 import { requestUserFromAppToken, resolveAppToken } from './app-token.util';
 
 /**
@@ -92,21 +91,29 @@ export class ApiKeyGuard implements CanActivate {
   }
 
   private async validateSession(request: any, response: any): Promise<boolean> {
+    // Read the session with sessionRequired: false (same as OptionalAuthGuard).
+    // The express verifySession() middleware must NOT be used here: on a missing
+    // session it writes SuperTokens' own 401 and never calls back, so the guard's
+    // own throw becomes a second write (ERR_HTTP_HEADERS_SENT, issue #775).
+    // The 401 body texts mirror what SuperTokens used to write; the frontend's
+    // silent-refresh flow keys on them (see session-auth.guard.ts).
+    let session: SessionContainer | undefined;
     try {
-      // Verify session using SuperTokens
-      await verifySession()(request, response, (err?: any) => {
-        if (err) {
-          throw new UnauthorizedException('Invalid or expired session');
-        }
-      });
+      session = await getSession(request, response, { sessionRequired: false });
+    } catch (error) {
+      throw new UnauthorizedException(sessionErrorMessage(error));
+    }
 
-      // Session is now available on request.session
-      const session: SessionContainer = request.session;
+    if (!session) {
+      throw new UnauthorizedException(SESSION_401_NO_SESSION);
+    }
 
-      if (!session) {
-        throw new UnauthorizedException('No active session');
-      }
+    // verifySession() used to set request.session as a side effect; getSession()
+    // does not. The global EmailVerificationGuard and session handlers still read
+    // request.session, so restore it.
+    request.session = session;
 
+    try {
       const userId = session.getUserId();
 
       // Get user from database to include role information
