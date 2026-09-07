@@ -12,6 +12,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { getSession } from 'supertokens-node/recipe/session';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -76,6 +77,10 @@ export class OAuthController {
   }
 
   @Get('authorize')
+  // A URL client_id makes this route fetch a Client ID Metadata Document, and a
+  // query string in the URL defeats the document cache — so the route is held
+  // well under the global 100/min per IP (#768). A browser flow needs one hit.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOperation({
     summary: 'Authorization endpoint (code + PKCE S256, RFC 8707 resource)',
     description:
