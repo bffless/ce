@@ -306,6 +306,22 @@ global limit allows.
 **Learned from:** #741, 2026-09-07 — the triage comment flagged it before the code was written;
 (6) from #768, 2026-09-07 — the CIMD fetch shipped (PR #764) with only the global throttle over it.
 
+### A guard moved from `verifySession()` to `getSession()` must still set `request.session`
+**Surface:** `apps/backend/src/auth/session-auth.guard.ts`, `apps/backend/src/auth/api-key.guard.ts`,
+and any other guard migrated off the SuperTokens express `verifySession()` middleware onto the
+recipe-level `getSession()`.
+**Check:** The express middleware sets `request.session` as a side effect; `getSession()` returns the
+container and sets nothing. Does the guard assign it back (`request.session = session`)? Grep for
+`req.session` / `request.session` outside the guard: `AuthController.getSession`, `change-password`,
+`login-methods`, `SetupController.adopt-session-user` 401 without it, and the global
+`EmailVerificationGuard` (`APP_GUARD`) treats a missing `request.session` as "unauthenticated, skip",
+silently disabling `ENABLE_EMAIL_VERIFICATION`.
+**Why:** Invisible to `tsc` (the field is typed optional) and to guard-level unit tests that mock
+`getSession` and assert only `request.user`. `session-request-contract.spec.ts` runs the guard and
+then the downstream handler / `EmailVerificationGuard` on the same request object to pin it.
+**Learned from:** PR #776, 2026-09-07 — the first push kept `getSession()`'s result local; caught by
+the CI review before merge.
+
 ---
 
 ## Entry template

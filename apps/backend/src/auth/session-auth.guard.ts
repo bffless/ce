@@ -51,6 +51,11 @@ export class SessionAuthGuard implements CanActivate {
         throw new UnauthorizedException('No active session');
       }
 
+      // verifySession() used to set request.session as a side effect; getSession()
+      // does not. Handlers (AuthController.getSession, SetupController) and the
+      // global EmailVerificationGuard still read request.session, so restore it.
+      (request as Request & { session?: SessionContainer }).session = session;
+
       const userId = session.getUserId();
 
       // Fetch user from database to get role

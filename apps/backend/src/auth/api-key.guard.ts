@@ -107,6 +107,11 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Authentication required');
     }
 
+    // verifySession() used to set request.session as a side effect; getSession()
+    // does not. The global EmailVerificationGuard and session handlers still read
+    // request.session, so restore it.
+    request.session = session;
+
     try {
       const userId = session.getUserId();
 

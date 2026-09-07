@@ -113,6 +113,8 @@ describe('SessionAuthGuard', () => {
       expect(mockGetSession).toHaveBeenCalledWith(mockRequest, mockResponse, {
         sessionRequired: false,
       });
+      // verifySession() used to set this; handlers and EmailVerificationGuard read it.
+      expect(mockRequest.session).toBe(mockSession);
       expect(mockResponse.redirect).not.toHaveBeenCalled();
     });
 
@@ -125,6 +127,8 @@ describe('SessionAuthGuard', () => {
         new UnauthorizedException('Authentication required'),
       );
       expect(mockResponse.redirect).not.toHaveBeenCalled();
+      expect(mockRequest.session).toBeUndefined();
+      expect(mockRequest.user).toBeUndefined();
     });
 
     it('should redirect browser request to login with tryRefresh param', async () => {

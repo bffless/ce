@@ -109,10 +109,11 @@ describe('ApiKeyGuard', () => {
       });
 
       it('allows access with a valid session and attaches the user', async () => {
-        mockGetSession.mockResolvedValue({
+        const session = {
           getUserId: () => 'user-123',
           getHandle: () => 'session-handle',
-        });
+        };
+        mockGetSession.mockResolvedValue(session);
         mockDb.limit = jest
           .fn()
           .mockResolvedValue([{ id: 'user-123', email: 'test@example.com', role: 'admin' }]);
@@ -126,6 +127,8 @@ describe('ApiKeyGuard', () => {
           email: 'test@example.com',
           role: 'admin',
         });
+        // verifySession() used to set this; handlers and EmailVerificationGuard read it.
+        expect(mockRequest.session).toBe(session);
       });
 
       it('throws 401 when getSession rejects (present but invalid token)', async () => {
@@ -138,6 +141,7 @@ describe('ApiKeyGuard', () => {
         );
         expect(mockResponse.redirect).not.toHaveBeenCalled();
         expect(mockRequest.user).toBeUndefined();
+        expect(mockRequest.session).toBeUndefined();
       });
 
       it('never redirects, even for a browser-style request', async () => {
