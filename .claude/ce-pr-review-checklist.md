@@ -290,10 +290,18 @@ import-by-URL features.
 non-public — including IPv6 forms that embed an IPv4 (`::ffff:`, NAT64, 6to4), (3) pin the connection to the
 vetted addresses so the name is not resolved again between check and connect, (4) refuse redirects, and
 (5) bound the read with a timeout and a byte cap? A hostname/regex check alone (the `validateTargetUrl`
-TODO) is bypassed by a public name that resolves to `169.254.169.254`.
+TODO) is bypassed by a public name that resolves to `169.254.169.254`. And (6) does the route that
+triggers the fetch carry a rate limit tighter than the global default (a `@Throttle` override on the
+handler — the global `ThrottlerGuard` is 100/min per IP), plus, where the target is cacheable, in-flight
+dedupe (one fetch per URL shared by concurrent callers) and a negative cache (a failure is remembered for
+a fixed TTL, not refetched per request)? A cache keyed by the full URL is defeated by a query string the
+caller controls, so the positive cache alone is no ceiling.
 **Why:** The backend runs next to the metadata endpoint, the database, MinIO and the other pods; one
-missed step turns "fetch my client metadata" into "read the instance credentials".
-**Learned from:** #741, 2026-09-07 — the triage comment flagged it before the code was written.
+missed step turns "fetch my client metadata" into "read the instance credentials". Without (6), any
+session holder can make the server perform one guarded outbound fetch per request, for as long as the
+global limit allows.
+**Learned from:** #741, 2026-09-07 — the triage comment flagged it before the code was written;
+(6) from #768, 2026-09-07 — the CIMD fetch shipped (PR #764) with only the global throttle over it.
 
 ---
 

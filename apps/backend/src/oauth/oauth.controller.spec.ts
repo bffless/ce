@@ -5,6 +5,8 @@ import { RegisterClientDto } from './oauth.dto';
 import { OAuthMetadataController } from './oauth-metadata.controller';
 import { OAuthError } from './oauth.errors';
 import { PUBLIC_PROJECT_ACCESS_KEY } from '../auth/decorators/public-project-access.decorator';
+// Not re-exported from the package root; these are the keys `ThrottlerGuard` reads through the Reflector.
+import { THROTTLER_LIMIT, THROTTLER_TTL } from '@nestjs/throttler/dist/throttler.constants';
 
 jest.mock('supertokens-node/recipe/session', () => ({ getSession: jest.fn() }));
 const { getSession: mockGetSession } = jest.requireMock('supertokens-node/recipe/session');
@@ -82,6 +84,20 @@ describe('OAuth controllers', () => {
     expect(guards('token')).toEqual([]);
     expect(guards('register')).toEqual([]);
     expect(guards('authorize')).toEqual([]);
+  });
+
+  it('authorize carries its own per-IP throttle, tighter than the global 100/min (#768)', () => {
+    // A URL client_id makes the route fetch a Client ID Metadata Document; the
+    // global ThrottlerGuard applies this override per IP on the authorize handler.
+    const handler = OAuthController.prototype.authorize;
+    expect(Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler)).toBe(20);
+    expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, handler)).toBe(60_000);
+    // and only there — the other routes keep the global default
+    for (const other of ['register', 'pending', 'decide', 'token', 'revoke'] as const) {
+      expect(
+        Reflect.getMetadata(`${THROTTLER_LIMIT}default`, OAuthController.prototype[other]),
+      ).toBeUndefined();
+    }
   });
 
   it('serves RFC 8414 metadata', () => {

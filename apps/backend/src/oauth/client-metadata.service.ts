@@ -19,6 +19,13 @@ import { isAcceptableRedirect } from './redirect-uri.util';
  * to must be public; the connection is then pinned to exactly those
  * addresses (no re-resolution between the check and the connect); redirects
  * are not followed; the read is bounded by a timeout and a byte cap.
+ *
+ * The fetch is also a cost a session holder can make the server pay: a
+ * query string is legal in a `client_id`, so a cache-busting query defeats
+ * the positive cache. Three ceilings (#768): the authorize route's own
+ * `@Throttle` override, one in-flight fetch per URL shared by concurrent
+ * callers, and a fixed-TTL negative cache so a failing URL is not refetched
+ * on every request.
  */
 
 export const CIMD_FETCH_TIMEOUT_MS = 5_000;
@@ -27,6 +34,9 @@ export const CIMD_MAX_BYTES = 64 * 1024;
 export const CIMD_DEFAULT_TTL_MS = 5 * 60_000;
 /** The longest a `max-age` may hold a document — a rotated redirect_uri must land within a day. */
 export const CIMD_MAX_TTL_MS = 24 * 3600_000;
+/** How long a failed resolution (unreachable, non-200, invalid document) is remembered — fixed, never from `Cache-Control`. */
+export const CIMD_NEGATIVE_TTL_MS = 60_000;
+/** Positive and negative entries together — a failing URL costs the same slot a document does. */
 export const CIMD_CACHE_MAX_ENTRIES = 500;
 /**
  * The uuid v5 namespace an `oauth_clients` row keyed by its metadata URL gets.
@@ -88,7 +98,9 @@ export interface ClientMetadataTransport {
 @Injectable()
 export class ClientMetadataService {
   private readonly logger = new Logger(ClientMetadataService.name);
-  private readonly cache = new Map<string, { doc: ClientMetadataDocument; expiresAt: number }>();
+  private readonly cache = new Map<string, CacheEntry>();
+  /** One fetch per URL at a time: concurrent callers await the same promise. */
+  private readonly inflight = new Map<string, Promise<ClientMetadataDocument>>();
   private readonly transport: ClientMetadataTransport;
 
   constructor(@Optional() @Inject(CLIENT_METADATA_TRANSPORT) transport?: ClientMetadataTransport) {
@@ -117,45 +129,68 @@ export class ClientMetadataService {
   /**
    * The document behind `clientId`, from the cache or fetched through the guard.
    * Every failure is `invalid_client` (401): the client_id names no usable client.
+   * A failure is remembered for {@link CIMD_NEGATIVE_TTL_MS} and answered from the
+   * cache without another fetch; concurrent calls for one URL share one fetch.
    */
   async resolve(clientId: string): Promise<ClientMetadataDocument> {
     const url = assertClientIdUrl(clientId);
     const cached = this.cache.get(clientId);
-    if (cached && cached.expiresAt > Date.now()) return cached.doc;
+    if (cached && cached.expiresAt > Date.now()) {
+      if ('doc' in cached) return cached.doc;
+      throw invalidClient(cached.description);
+    }
     this.cache.delete(clientId);
 
-    const addresses = await this.vettedAddresses(url.hostname);
-    let res: ClientMetadataResponse;
-    try {
-      res = await this.transport.fetch(clientId, {
-        addresses,
-        signal: AbortSignal.timeout(CIMD_FETCH_TIMEOUT_MS),
-      });
-    } catch (error) {
-      this.logger.debug(`client metadata document ${clientId}: ${String(error)}`);
-      throw invalidClient('the client metadata document could not be fetched');
-    }
-    if (res.status !== 200) {
-      throw invalidClient(`the client metadata document answered ${res.status}`);
-    }
-    let raw: unknown;
-    try {
-      raw = JSON.parse(res.text);
-    } catch {
-      throw invalidClient('the client metadata document is not JSON');
-    }
-    const doc = parseClientMetadataDocument(raw, clientId);
-    if (doc.tokenEndpointAuthMethod !== 'none') {
-      this.logger.log(
-        `OAuth client ${clientId} declares ${doc.tokenEndpointAuthMethod}; treated as a public client (none)`,
-      );
-    }
-    this.remember(clientId, doc, ttlFrom(res.headers.get('cache-control')));
-    return doc;
+    const pending = this.inflight.get(clientId);
+    if (pending) return pending;
+    const fetching = this.fetchDocument(clientId, url).finally(() => {
+      this.inflight.delete(clientId);
+    });
+    this.inflight.set(clientId, fetching);
+    return fetching;
   }
 
   clearCache(): void {
     this.cache.clear();
+  }
+
+  /** The guarded fetch and parse; the outcome — document or failure — goes into the cache. */
+  private async fetchDocument(clientId: string, url: URL): Promise<ClientMetadataDocument> {
+    try {
+      const addresses = await this.vettedAddresses(url.hostname);
+      let res: ClientMetadataResponse;
+      try {
+        res = await this.transport.fetch(clientId, {
+          addresses,
+          signal: AbortSignal.timeout(CIMD_FETCH_TIMEOUT_MS),
+        });
+      } catch (error) {
+        this.logger.debug(`client metadata document ${clientId}: ${String(error)}`);
+        throw invalidClient('the client metadata document could not be fetched');
+      }
+      if (res.status !== 200) {
+        throw invalidClient(`the client metadata document answered ${res.status}`);
+      }
+      let raw: unknown;
+      try {
+        raw = JSON.parse(res.text);
+      } catch {
+        throw invalidClient('the client metadata document is not JSON');
+      }
+      const doc = parseClientMetadataDocument(raw, clientId);
+      if (doc.tokenEndpointAuthMethod !== 'none') {
+        this.logger.log(
+          `OAuth client ${clientId} declares ${doc.tokenEndpointAuthMethod}; treated as a public client (none)`,
+        );
+      }
+      this.remember(clientId, { doc }, ttlFrom(res.headers.get('cache-control')));
+      return doc;
+    } catch (error) {
+      if (error instanceof OAuthError) {
+        this.remember(clientId, { description: error.description }, CIMD_NEGATIVE_TTL_MS);
+      }
+      throw error;
+    }
   }
 
   private async vettedAddresses(hostname: string): Promise<ResolvedAddress[]> {
@@ -174,15 +209,20 @@ export class ClientMetadataService {
     return addresses;
   }
 
-  private remember(clientId: string, doc: ClientMetadataDocument, ttlMs: number): void {
+  /** Insert-ordered and bounded: at the cap the oldest entry, positive or negative, makes room. */
+  private remember(clientId: string, outcome: CacheOutcome, ttlMs: number): void {
     if (ttlMs <= 0) return;
     if (this.cache.size >= CIMD_CACHE_MAX_ENTRIES) {
       const oldest = this.cache.keys().next().value;
       if (oldest !== undefined) this.cache.delete(oldest);
     }
-    this.cache.set(clientId, { doc, expiresAt: Date.now() + ttlMs });
+    this.cache.set(clientId, { ...outcome, expiresAt: Date.now() + ttlMs });
   }
 }
+
+/** A resolved document, or the `invalid_client` description a failed resolution produced. */
+type CacheOutcome = { doc: ClientMetadataDocument } | { description: string };
+type CacheEntry = CacheOutcome & { expiresAt: number };
 
 function invalidClient(description: string): OAuthError {
   return new OAuthError('invalid_client', description, 401);

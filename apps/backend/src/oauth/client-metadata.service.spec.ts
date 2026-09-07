@@ -1,7 +1,9 @@
 import {
+  CIMD_CACHE_MAX_ENTRIES,
   CIMD_CLIENT_NAMESPACE,
   CIMD_DEFAULT_TTL_MS,
   CIMD_MAX_TTL_MS,
+  CIMD_NEGATIVE_TTL_MS,
   ClientMetadataService,
   ClientMetadataTransport,
   assertClientIdUrl,
@@ -158,10 +160,183 @@ describe('ClientMetadataService — Client ID Metadata Documents (#741)', () => 
         }),
       });
       await expect(other.service.resolve(URL_)).rejects.toMatchObject({ error: 'invalid_client' });
-      // none of those are cached
+      // a failure is remembered (negative cache, #768): the repeat is answered without a fetch
       expect(other.transport.fetch).toHaveBeenCalledTimes(1);
       await expect(other.service.resolve(URL_)).rejects.toThrow(OAuthError);
-      expect(other.transport.fetch).toHaveBeenCalledTimes(2);
+      expect(other.transport.fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('resolve — one fetch per URL, failures remembered (#768)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('concurrent calls for the same URL share one lookup and one fetch', async () => {
+      let release!: (r: { status: number; headers: { get(): null }; text: string }) => void;
+      const fetch = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+      const { service, transport } = make({ fetch });
+      const a = service.resolve(URL_);
+      const b = service.resolve(URL_);
+      // let both calls get through the (mocked) lookup to the fetch — microtasks only
+      for (let i = 0; i < 20 && fetch.mock.calls.length === 0; i += 1) await Promise.resolve();
+      expect(transport.lookup).toHaveBeenCalledTimes(1);
+      expect(transport.fetch).toHaveBeenCalledTimes(1);
+      release({ status: 200, headers: { get: () => null }, text: JSON.stringify(doc()) });
+      const [docA, docB] = await Promise.all([a, b]);
+      expect(docA).toBe(docB);
+      expect(docA.clientName).toBe('Claude');
+      // the in-flight slot is released: after the cache is cleared, a new call fetches again
+      service.clearCache();
+      fetch.mockResolvedValue({
+        status: 200,
+        headers: { get: () => null },
+        text: JSON.stringify(doc()),
+      });
+      await service.resolve(URL_);
+      expect(transport.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('concurrent callers all see the one failure, and a different URL is not held up', async () => {
+      const otherUrl = 'https://other.example/client';
+      const fetch = jest.fn().mockImplementation(async (url: string) =>
+        url === URL_
+          ? Promise.reject(new Error('timeout'))
+          : {
+              status: 200,
+              headers: { get: () => null },
+              text: JSON.stringify(doc({ client_id: otherUrl })),
+            },
+      );
+      const { service, transport } = make({ fetch });
+      const results = await Promise.allSettled([
+        service.resolve(URL_),
+        service.resolve(URL_),
+        service.resolve(otherUrl),
+      ]);
+      expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected', 'fulfilled']);
+      expect(transport.fetch).toHaveBeenCalledTimes(2);
+      expect(transport.fetch).toHaveBeenCalledWith(URL_, expect.anything());
+      expect(transport.fetch).toHaveBeenCalledWith(otherUrl, expect.anything());
+    });
+
+    it('a failed fetch is not retried within the negative TTL, and is retried after it', async () => {
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      const fetch = jest.fn().mockRejectedValue(new Error('ECONNRESET'));
+      const { service, transport } = make({ fetch });
+      const failure = {
+        error: 'invalid_client',
+        status: 401,
+        description: 'the client metadata document could not be fetched',
+      };
+      await expect(service.resolve(URL_)).rejects.toMatchObject(failure);
+      await expect(service.resolve(URL_)).rejects.toMatchObject(failure);
+      now.mockReturnValue(1_000_000 + CIMD_NEGATIVE_TTL_MS - 1);
+      await expect(service.resolve(URL_)).rejects.toMatchObject(failure);
+      expect(transport.lookup).toHaveBeenCalledTimes(1);
+      expect(transport.fetch).toHaveBeenCalledTimes(1);
+      // past the TTL the URL is tried again — and the document may be there now
+      now.mockReturnValue(1_000_000 + CIMD_NEGATIVE_TTL_MS);
+      fetch.mockResolvedValueOnce({
+        status: 200,
+        headers: { get: () => null },
+        text: JSON.stringify(doc()),
+      });
+      await expect(service.resolve(URL_)).resolves.toMatchObject({ clientName: 'Claude' });
+      expect(transport.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("a non-200, an invalid document, and an unresolvable host are remembered the same way; the TTL is fixed, not the response's", async () => {
+      const gone = make({
+        fetch: jest.fn().mockResolvedValue({
+          status: 404,
+          headers: { get: () => 'max-age=0' },
+          text: '',
+        }),
+      });
+      await expect(gone.service.resolve(URL_)).rejects.toMatchObject({
+        description: 'the client metadata document answered 404',
+      });
+      await expect(gone.service.resolve(URL_)).rejects.toMatchObject({
+        description: 'the client metadata document answered 404',
+      });
+      expect(gone.transport.fetch).toHaveBeenCalledTimes(1);
+
+      const bad = make({
+        fetch: jest.fn().mockResolvedValue({
+          status: 200,
+          headers: { get: () => 'no-store' },
+          text: JSON.stringify(doc({ redirect_uris: [] })),
+        }),
+      });
+      await expect(bad.service.resolve(URL_)).rejects.toMatchObject({ error: 'invalid_client' });
+      await expect(bad.service.resolve(URL_)).rejects.toMatchObject({ error: 'invalid_client' });
+      expect(bad.transport.fetch).toHaveBeenCalledTimes(1);
+
+      const unresolved = make({ lookup: jest.fn().mockRejectedValue(new Error('ENOTFOUND')) });
+      await expect(unresolved.service.resolve(URL_)).rejects.toMatchObject({
+        description: 'the client_id host does not resolve',
+      });
+      await expect(unresolved.service.resolve(URL_)).rejects.toMatchObject({
+        description: 'the client_id host does not resolve',
+      });
+      expect(unresolved.transport.lookup).toHaveBeenCalledTimes(1);
+    });
+
+    it('a URL refused by shape is not cached — that check costs nothing and does not touch the network', async () => {
+      const { service, transport } = make();
+      await expect(service.resolve('https://localhost/m')).rejects.toThrow(OAuthError);
+      expect(transport.lookup).not.toHaveBeenCalled();
+      expect(transport.fetch).not.toHaveBeenCalled();
+    });
+
+    it('clearCache drops negative entries too', async () => {
+      const fetch = jest.fn().mockRejectedValue(new Error('timeout'));
+      const { service, transport } = make({ fetch });
+      await expect(service.resolve(URL_)).rejects.toThrow(OAuthError);
+      service.clearCache();
+      await expect(service.resolve(URL_)).rejects.toThrow(OAuthError);
+      expect(transport.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('negative entries count toward the cache bound: at the cap the oldest one is evicted', async () => {
+      const failing = (url: string) => `${url}?v=fail`;
+      const fetch = jest.fn().mockImplementation(async (url: string) =>
+        url.endsWith('?v=fail')
+          ? Promise.reject(new Error('timeout'))
+          : {
+              status: 200,
+              headers: { get: () => null },
+              text: JSON.stringify(doc({ client_id: url })),
+            },
+      );
+      const { service, transport } = make({ fetch });
+      const first = failing('https://client-0.example/m');
+      for (let i = 0; i < CIMD_CACHE_MAX_ENTRIES; i += 1) {
+        await expect(service.resolve(failing(`https://client-${i}.example/m`))).rejects.toThrow(
+          OAuthError,
+        );
+      }
+      expect(transport.fetch).toHaveBeenCalledTimes(CIMD_CACHE_MAX_ENTRIES);
+      // full: the first (oldest) negative entry still answers from the cache
+      await expect(service.resolve(first)).rejects.toThrow(OAuthError);
+      expect(transport.fetch).toHaveBeenCalledTimes(CIMD_CACHE_MAX_ENTRIES);
+      // one more entry — a document this time — evicts exactly the oldest
+      await expect(service.resolve('https://client-new.example/m')).resolves.toMatchObject({
+        clientId: 'https://client-new.example/m',
+      });
+      expect(transport.fetch).toHaveBeenCalledTimes(CIMD_CACHE_MAX_ENTRIES + 1);
+      // the second-oldest is still held …
+      await expect(service.resolve(failing('https://client-1.example/m'))).rejects.toThrow(
+        OAuthError,
+      );
+      expect(transport.fetch).toHaveBeenCalledTimes(CIMD_CACHE_MAX_ENTRIES + 1);
+      // … the oldest is gone and is fetched again
+      await expect(service.resolve(first)).rejects.toThrow(OAuthError);
+      expect(transport.fetch).toHaveBeenCalledTimes(CIMD_CACHE_MAX_ENTRIES + 2);
     });
   });
 
