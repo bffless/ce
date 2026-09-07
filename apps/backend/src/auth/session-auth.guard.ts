@@ -5,6 +5,7 @@ import { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { users } from '../db/schema';
+import { isApiRequest } from '../common/request-kind';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 
@@ -112,7 +113,7 @@ export class SessionAuthGuard implements CanActivate {
    */
   private handleAuthFailure(request: Request, response: Response, message: string): never {
     // API requests should get a 401 JSON response, not a redirect
-    if (this.isApiRequest(request)) {
+    if (isApiRequest(request)) {
       throw new UnauthorizedException(message);
     }
 
@@ -131,53 +132,5 @@ export class SessionAuthGuard implements CanActivate {
     // After redirect, throw to prevent further processing
     // This exception will be caught by NestJS but the response is already sent
     throw new UnauthorizedException('Redirected for authentication');
-  }
-
-  /**
-   * Determines if this is an API request (expects a 401 JSON body) vs. a
-   * top-level browser navigation (can act on a redirect).
-   *
-   * Only a real navigation may get the redirect. The admin SPA's own fetch()
-   * calls send no Accept header (browser default `*\/*`) and `Sec-Fetch-Mode:
-   * cors`/`same-origin`; if those were redirected, fetch() would follow the 302
-   * to /login's HTML and the frontend's silent-refresh flow (which keys on a
-   * 401) would never run. So the default is API, and "browser" requires a
-   * positive signal: `Sec-Fetch-Mode: navigate` (set by browsers on navigation,
-   * never by fetch/XHR) or an Accept header that asks for text/html.
-   */
-  private isApiRequest(request: Request): boolean {
-    const acceptHeader = request.headers.accept || '';
-    const contentType = request.headers['content-type'] || '';
-
-    // XHR/fetch requests typically want JSON
-    if (acceptHeader.includes('application/json')) {
-      return true;
-    }
-
-    // Requests sending JSON are likely API calls
-    if (contentType.includes('application/json')) {
-      return true;
-    }
-
-    // X-Requested-With header indicates AJAX
-    if (request.headers['x-requested-with'] === 'XMLHttpRequest') {
-      return true;
-    }
-
-    // API key header indicates programmatic access
-    if (request.headers['x-api-key']) {
-      return true;
-    }
-
-    // Top-level browser navigation: can act on a redirect
-    if (request.headers['sec-fetch-mode'] === 'navigate') {
-      return false;
-    }
-    if (acceptHeader.includes('text/html')) {
-      return false;
-    }
-
-    // Default: API client (fetch()/XHR with Accept: */*, curl, no Accept at all)
-    return true;
   }
 }

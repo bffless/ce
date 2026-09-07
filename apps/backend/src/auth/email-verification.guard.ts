@@ -6,6 +6,7 @@ import { RecipeUserId } from 'supertokens-node';
 import { IS_PUBLIC_KEY } from './session-auth.guard';
 import { SKIP_EMAIL_VERIFICATION_KEY } from './decorators/skip-email-verification.decorator';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+import { isApiRequest } from '../common/request-kind';
 
 /**
  * Global guard that enforces email verification when the feature flag is enabled.
@@ -74,9 +75,12 @@ export class EmailVerificationGuard implements CanActivate {
         return true;
       }
 
-      // Email not verified - handle based on request type
+      // Email not verified - handle based on request type. Only a real browser
+      // navigation gets the redirect; the admin SPA's fetch() calls (no Accept
+      // header) must see the 403 EMAIL_NOT_VERIFIED body, which is what
+      // apps/frontend/src/services/api.ts routes to /verify-email on (#778).
       const response = context.switchToHttp().getResponse<Response>();
-      if (this.isApiRequest(request)) {
+      if (isApiRequest(request)) {
         throw new ForbiddenException({
           statusCode: 403,
           error: 'EMAIL_NOT_VERIFIED',
@@ -95,18 +99,5 @@ export class EmailVerificationGuard implements CanActivate {
       console.error('[EmailVerificationGuard] Error checking verification status:', error);
       return true;
     }
-  }
-
-  private isApiRequest(request: Request): boolean {
-    const acceptHeader = request.headers.accept || '';
-    const contentType = request.headers['content-type'] || '';
-
-    if (acceptHeader.includes('application/json')) return true;
-    if (contentType.includes('application/json')) return true;
-    if (request.headers['x-requested-with'] === 'XMLHttpRequest') return true;
-    if (request.headers['x-api-key']) return true;
-    if (acceptHeader.startsWith('application/') && !acceptHeader.includes('text/html')) return true;
-
-    return false;
   }
 }
