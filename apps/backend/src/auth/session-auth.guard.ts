@@ -1,7 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { verifySession } from 'supertokens-node/recipe/session/framework/express';
-import { SessionContainer } from 'supertokens-node/recipe/session';
+import { getSession, SessionContainer } from 'supertokens-node/recipe/session';
 import { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
@@ -37,15 +36,16 @@ export class SessionAuthGuard implements CanActivate {
     const response = context.switchToHttp().getResponse<Response>();
 
     try {
-      // Verify session using SuperTokens
-      await verifySession()(request, response, (err) => {
-        if (err) {
-          throw new UnauthorizedException('Invalid or expired session');
-        }
+      // Read the session with sessionRequired: false (same as OptionalAuthGuard).
+      // The express verifySession() middleware must NOT be used here: on a missing
+      // session it writes SuperTokens' own 401 and never calls back, so anything the
+      // guard does afterwards is a second write (ERR_HTTP_HEADERS_SENT, issue #775).
+      // getSession resolves undefined when there is no session and rejects for a
+      // present-but-invalid token (TRY_REFRESH_TOKEN) - both take the failure path
+      // below, which owns the response (401 JSON or /login redirect).
+      const session: SessionContainer | undefined = await getSession(request, response, {
+        sessionRequired: false,
       });
-
-      // Session is now available on request.session
-      const session = (request as Request & { session?: SessionContainer }).session;
 
       if (!session) {
         throw new UnauthorizedException('No active session');
@@ -89,9 +89,14 @@ export class SessionAuthGuard implements CanActivate {
     // Browser request - redirect to login with tryRefresh param
     // Server can't reliably check for refresh token cookie due to cookie path restrictions
     // The frontend login page will attempt session refresh before showing the form
-    const originalUrl = request.originalUrl || request.url || '/';
-    const loginUrl = `/login?redirect=${encodeURIComponent(originalUrl)}&tryRefresh=true`;
-    response.redirect(302, loginUrl);
+    // Never write over a response something upstream already sent - that turns an
+    // auth failure into an ERR_HTTP_HEADERS_SENT 500. The exception filter skips
+    // writing when headers are sent, so throwing is always safe.
+    if (!response.headersSent) {
+      const originalUrl = request.originalUrl || request.url || '/';
+      const loginUrl = `/login?redirect=${encodeURIComponent(originalUrl)}&tryRefresh=true`;
+      response.redirect(302, loginUrl);
+    }
 
     // After redirect, throw to prevent further processing
     // This exception will be caught by NestJS but the response is already sent

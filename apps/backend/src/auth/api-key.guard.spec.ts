@@ -17,6 +17,11 @@ jest.mock('../db/client', () => ({
 
 jest.mock('bcrypt');
 
+// The session fallback must use getSession (never the express verifySession
+// middleware, which writes its own 401 on a missing session - issue #775).
+jest.mock('supertokens-node/recipe/session', () => ({ getSession: jest.fn() }));
+const { getSession: mockGetSession } = jest.requireMock('supertokens-node/recipe/session');
+
 jest.mock('./app-token.util', () => ({
   ...jest.requireActual('./app-token.util'),
   resolveAppToken: jest.fn().mockResolvedValue(null),
@@ -46,6 +51,7 @@ describe('ApiKeyGuard', () => {
     guard = module.get<ApiKeyGuard>(ApiKeyGuard);
     reflector = module.get<Reflector>(Reflector);
     jest.clearAllMocks();
+    mockGetSession.mockResolvedValue(undefined);
   });
 
   it('should be defined', () => {
@@ -62,7 +68,7 @@ describe('ApiKeyGuard', () => {
         headers: {},
       };
 
-      mockResponse = {};
+      mockResponse = { redirect: jest.fn(), headersSent: false };
 
       mockExecutionContext = {
         switchToHttp: jest.fn().mockReturnValue({
@@ -85,11 +91,64 @@ describe('ApiKeyGuard', () => {
     it('should throw error if no API key and no valid session', async () => {
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
 
-      // When no API key is provided, the guard falls back to session authentication
-      // Since there's no valid session, it throws "Invalid or expired session"
+      // When no API key is provided, the guard falls back to session authentication.
+      // With no session it throws its own 401 (never a redirect - this guard is for
+      // programmatic access) and leaves the response untouched for the filter.
       await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
-        new UnauthorizedException('Invalid or expired session'),
+        new UnauthorizedException('Authentication required'),
       );
+      expect(mockGetSession).toHaveBeenCalledWith(mockRequest, mockResponse, {
+        sessionRequired: false,
+      });
+      expect(mockResponse.redirect).not.toHaveBeenCalled();
+    });
+
+    describe('session fallback', () => {
+      beforeEach(() => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+      });
+
+      it('allows access with a valid session and attaches the user', async () => {
+        mockGetSession.mockResolvedValue({
+          getUserId: () => 'user-123',
+          getHandle: () => 'session-handle',
+        });
+        mockDb.limit = jest
+          .fn()
+          .mockResolvedValue([{ id: 'user-123', email: 'test@example.com', role: 'admin' }]);
+        mockDb.from.mockReturnThis();
+        mockDb.where.mockReturnThis();
+
+        await expect(guard.canActivate(mockExecutionContext)).resolves.toBe(true);
+        expect(mockRequest.user).toEqual({
+          id: 'user-123',
+          sessionHandle: 'session-handle',
+          email: 'test@example.com',
+          role: 'admin',
+        });
+      });
+
+      it('throws 401 when getSession rejects (present but invalid token)', async () => {
+        mockGetSession.mockRejectedValue(
+          Object.assign(new Error('try refresh token'), { type: 'TRY_REFRESH_TOKEN' }),
+        );
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('Invalid or expired session'),
+        );
+        expect(mockResponse.redirect).not.toHaveBeenCalled();
+        expect(mockRequest.user).toBeUndefined();
+      });
+
+      it('never redirects, even for a browser-style request', async () => {
+        mockRequest.headers = { accept: 'text/html,application/xhtml+xml' };
+        mockGetSession.mockResolvedValue(undefined);
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          UnauthorizedException,
+        );
+        expect(mockResponse.redirect).not.toHaveBeenCalled();
+      });
     });
 
     it('should allow access with valid API key', async () => {
@@ -188,7 +247,7 @@ describe('ApiKeyGuard', () => {
         mockResolveAppToken.mockResolvedValueOnce(null);
 
         await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
-          new UnauthorizedException('Invalid or expired session'),
+          new UnauthorizedException('Authentication required'),
         );
         expect(mockResolveAppToken).toHaveBeenCalledWith('Bearer eyJhbGciOi.jwt');
       });

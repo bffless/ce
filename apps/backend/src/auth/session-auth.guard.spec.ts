@@ -10,13 +10,14 @@ jest.mock('../db/client', () => ({
   },
 }));
 
-// Mock SuperTokens
-jest.mock('supertokens-node/recipe/session/framework/express', () => ({
-  verifySession: jest.fn(),
-}));
+// Mock SuperTokens. The guard must use getSession (never the express verifySession
+// middleware, which writes its own 401 on a missing session - issue #775).
+jest.mock('supertokens-node/recipe/session', () => ({ getSession: jest.fn() }));
 
-import { verifySession } from 'supertokens-node/recipe/session/framework/express';
+import { getSession } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';
+
+const mockGetSession = getSession as jest.Mock;
 
 describe('SessionAuthGuard', () => {
   let guard: SessionAuthGuard;
@@ -37,6 +38,7 @@ describe('SessionAuthGuard', () => {
 
     guard = module.get<SessionAuthGuard>(SessionAuthGuard);
     reflector = module.get<Reflector>(Reflector);
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
@@ -58,6 +60,7 @@ describe('SessionAuthGuard', () => {
       };
       mockResponse = {
         redirect: jest.fn(),
+        headersSent: false,
       };
 
       mockExecutionContext = {
@@ -86,13 +89,7 @@ describe('SessionAuthGuard', () => {
         getHandle: jest.fn().mockReturnValue('session-handle'),
       };
 
-      mockRequest.session = mockSession;
-
-      (verifySession as jest.Mock).mockReturnValue(
-        (req: any, res: any, next: (err?: any) => void) => {
-          next();
-        },
-      );
+      mockGetSession.mockResolvedValue(mockSession);
 
       // Mock database query to return user with role
       const mockDbChain = {
@@ -107,21 +104,27 @@ describe('SessionAuthGuard', () => {
       const result = await guard.canActivate(mockExecutionContext);
 
       expect(result).toBe(true);
-      expect(mockRequest.user).toBeDefined();
-      expect(mockRequest.user.id).toBe('user-123');
-      expect(mockRequest.user.role).toBe('admin');
+      expect(mockRequest.user).toEqual({
+        id: 'user-123',
+        sessionHandle: 'session-handle',
+        email: 'test@example.com',
+        role: 'admin',
+      });
+      expect(mockGetSession).toHaveBeenCalledWith(mockRequest, mockResponse, {
+        sessionRequired: false,
+      });
+      expect(mockResponse.redirect).not.toHaveBeenCalled();
     });
 
     it('should deny access without session (API request)', async () => {
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
 
-      (verifySession as jest.Mock).mockReturnValue(
-        (req: any, res: any, next: (err?: any) => void) => {
-          next(new Error('No session'));
-        },
-      );
+      mockGetSession.mockResolvedValue(undefined);
 
-      await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(UnauthorizedException);
+      await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+        new UnauthorizedException('Authentication required'),
+      );
+      expect(mockResponse.redirect).not.toHaveBeenCalled();
     });
 
     it('should redirect browser request to login with tryRefresh param', async () => {
@@ -131,18 +134,59 @@ describe('SessionAuthGuard', () => {
       mockRequest.headers = { accept: 'text/html,application/xhtml+xml' };
       mockRequest.originalUrl = '/dashboard';
 
-      (verifySession as jest.Mock).mockReturnValue(
-        (req: any, res: any, next: (err?: any) => void) => {
-          next(new Error('No session'));
-        },
-      );
+      mockGetSession.mockResolvedValue(undefined);
 
       // Should throw after redirect, but redirect should be called first
       await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(UnauthorizedException);
+      expect(mockResponse.redirect).toHaveBeenCalledTimes(1);
       expect(mockResponse.redirect).toHaveBeenCalledWith(
         302,
         '/login?redirect=%2Fdashboard&tryRefresh=true',
       );
+    });
+
+    describe('present-but-invalid session (getSession rejects, e.g. TRY_REFRESH_TOKEN)', () => {
+      const tryRefresh = Object.assign(new Error('try refresh token'), {
+        type: 'TRY_REFRESH_TOKEN',
+      });
+
+      it('returns 401 to an API request without redirecting', async () => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+        mockRequest.headers = { accept: 'application/json' };
+        mockGetSession.mockRejectedValue(tryRefresh);
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('Authentication required'),
+        );
+        expect(mockResponse.redirect).not.toHaveBeenCalled();
+      });
+
+      it('redirects a browser request to /login exactly once, then throws', async () => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+        mockRequest.headers = { accept: 'text/html,application/xhtml+xml' };
+        mockRequest.originalUrl = '/dashboard';
+        mockGetSession.mockRejectedValue(tryRefresh);
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          UnauthorizedException,
+        );
+        expect(mockResponse.redirect).toHaveBeenCalledTimes(1);
+        expect(mockResponse.redirect).toHaveBeenCalledWith(
+          302,
+          '/login?redirect=%2Fdashboard&tryRefresh=true',
+        );
+      });
+    });
+
+    it('does not redirect when the response was already sent (no ERR_HTTP_HEADERS_SENT)', async () => {
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+      mockRequest.headers = { accept: 'text/html,application/xhtml+xml' };
+      mockRequest.originalUrl = '/dashboard';
+      mockResponse.headersSent = true;
+      mockGetSession.mockResolvedValue(undefined);
+
+      await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(UnauthorizedException);
+      expect(mockResponse.redirect).not.toHaveBeenCalled();
     });
 
     it('should not redirect API requests (return 401 instead)', async () => {
@@ -152,11 +196,7 @@ describe('SessionAuthGuard', () => {
       mockRequest.headers = { accept: 'application/json' };
       mockRequest.originalUrl = '/api/users';
 
-      (verifySession as jest.Mock).mockReturnValue(
-        (req: any, res: any, next: (err?: any) => void) => {
-          next(new Error('No session'));
-        },
-      );
+      mockGetSession.mockResolvedValue(undefined);
 
       // Should throw without redirect (API clients expect 401, not redirect)
       await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(UnauthorizedException);
