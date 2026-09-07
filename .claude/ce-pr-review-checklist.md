@@ -323,10 +323,13 @@ then the downstream handler / `EmailVerificationGuard` on the same request objec
 the CI review before merge.
 
 ### A guard's "browser or API caller?" heuristic must default to API and match the bundled SPA's real headers
-**Surface:** `apps/backend/src/auth/session-auth.guard.ts` (`isApiRequest`) and any guard or middleware
-that branches response shape (401 JSON vs. redirect) on request headers — `email-verification.guard.ts`,
-`auth.middleware.ts`, `proxy.middleware.ts` carry sibling copies. The admin SPA's single `fetchBaseQuery`
-(`apps/frontend/src/services/api.ts`) sets no `Accept`, so its calls arrive as `Accept: */*`.
+**Surface:** `apps/backend/src/common/request-kind.ts` (`isApiRequest` / `isBrowserNavigation`) is the
+single classifier; `session-auth.guard.ts`, `email-verification.guard.ts`, `auth.middleware.ts` and
+`proxy.middleware.ts` import it (#783 removed their private copies). Any new guard, middleware or
+controller that branches response shape (401 JSON vs. redirect) on request headers must import it too —
+a diff that adds a private `isApiRequest`-style helper, or reads `Accept` to pick a redirect, is the thing
+to catch. The admin SPA's single `fetchBaseQuery` (`apps/frontend/src/services/api.ts`) sets no `Accept`,
+so its calls arrive as `Accept: */*`.
 **Check:** Does the "browser" branch require a positive navigation signal (`Sec-Fetch-Mode: navigate`,
 which browsers send only for top-level navigations and `fetch()`/XHR never do, or an `Accept` naming
 `text/html`), with everything else — bare `*/*`, no `Accept`, curl — treated as API? And does a spec
