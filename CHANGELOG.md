@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.56](https://github.com/bffless/ce/compare/v0.4.55...v0.4.56) (2026-09-07)
 
-
 ### Fixed
-
-* **oauth:** defer every OAuthModule import with forwardRef; add two review-checklist entries ([#784](https://github.com/bffless/ce/issues/784)) ([1f07e2c](https://github.com/bffless/ce/commit/1f07e2c06549d206a66aec88dc407b4558533624))
+- oauth: defer every OAuthModule import with forwardRef; add two review-checklist entries ([#784](https://github.com/bffless/ce/pull/784), thanks @toshimoto821)
 
 ## [0.4.55](https://github.com/bffless/ce/compare/v0.4.54...v0.4.55) (2026-09-07)
 
