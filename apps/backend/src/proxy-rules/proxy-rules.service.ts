@@ -26,6 +26,11 @@ import type {
 import type { ProxyRuleSet } from '../db/schema/proxy-rule-sets.schema';
 import type { RevisionTrigger } from '../db/schema/proxy-rule-set-revisions.schema';
 import { methodSignature } from './method-match';
+import {
+  guardOutboundHost,
+  isExplicitlyInternalHost,
+  outboundUrlGuardMode,
+} from '../common/outbound-url.guard';
 
 // SSRF protection - blocked hostnames
 const BLOCKED_HOSTS = [
@@ -62,6 +67,9 @@ export class ProxyRulesService {
     private readonly emailService: EmailService,
     private readonly proxyRuleSetRevisionsService: ProxyRuleSetRevisionsService,
   ) {
+    // Read once at startup so an unrecognised OUTBOUND_URL_GUARD value is warned about at boot.
+    outboundUrlGuardMode();
+
     // Get encryption key from environment (same as used for storage credentials)
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
     if (encryptionKey) {
@@ -234,7 +242,10 @@ export class ProxyRulesService {
       dto.proxyType === 'pipeline' ||
       dto.internalRewrite;
     if (!skipUrlValidation) {
-      this.validateTargetUrl(dto.targetUrl);
+      await this.validateTargetUrl(
+        dto.targetUrl,
+        `proxy rule ${dto.pathPattern} in rule set ${dto.ruleSetId}`,
+      );
     }
 
     // Check for duplicate path pattern + method within the rule set
@@ -384,7 +395,7 @@ export class ProxyRulesService {
       dto.internalRewrite === true ||
       (dto.internalRewrite === undefined && existing.internalRewrite);
     if (dto.targetUrl && dto.targetUrl !== existing.targetUrl && !skipUrlValidation) {
-      this.validateTargetUrl(dto.targetUrl);
+      await this.validateTargetUrl(dto.targetUrl, `proxy rule ${id}`);
     }
 
     // Check for duplicate path pattern + method/methods if changing
@@ -852,9 +863,17 @@ export class ProxyRulesService {
   }
 
   /**
-   * Validate target URL for SSRF protection
+   * Validate target URL for SSRF protection.
+   *
+   * The protocol and hostname-string rules reject outright. A hostname that
+   * is not explicitly internal (localhost / 127.0.0.1 / *.svc /
+   * *.svc.cluster.local, which are allowed as same-pod and in-cluster
+   * targets) is then resolved and every address must be public — under
+   * `OUTBOUND_URL_GUARD` (#770): `warn` (default) logs and allows, so a
+   * self-hoster's split-horizon target keeps working after upgrade; `reject`
+   * refuses with a 400. `subject` names the rule for the log line / error.
    */
-  private validateTargetUrl(url: string): void {
+  private async validateTargetUrl(url: string, subject: string): Promise<void> {
     let parsed: URL;
     try {
       parsed = new URL(url);
@@ -896,8 +915,14 @@ export class ProxyRulesService {
       }
     }
 
-    // TODO: DNS resolution check for additional SSRF protection
-    // This would resolve the hostname and check if it points to internal IPs
+    // Resolve anything not declared internal and vet every address it has. A
+    // public name that resolves to 169.254.169.254 passes every check above.
+    if (!isExplicitlyInternalHost(hostname)) {
+      await guardOutboundHost(hostname, {
+        subject: `${subject}: target ${url}`,
+        logger: this.logger,
+      });
+    }
   }
 
   /**

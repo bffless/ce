@@ -420,6 +420,10 @@ services:
       # App catalog registry (Admin → Apps) — override for air-gapped or
       # self-published catalogs; see .env.example
       APPS_REGISTRY_URL: ${APPS_REGISTRY_URL:-}
+
+      # Outbound URL guard for proxy-rule targets and app bundle URLs:
+      # warn (default) or reject; see .env.example
+      OUTBOUND_URL_GUARD: ${OUTBOUND_URL_GUARD:-}
     ports:
       - '3000:3000'
     depends_on:

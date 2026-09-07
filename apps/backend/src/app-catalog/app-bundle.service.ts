@@ -1,6 +1,11 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { unzip } from 'fflate';
 import { createHash } from 'crypto';
+import {
+  guardOutboundHost,
+  isExplicitlyInternalHost,
+  outboundUrlGuardMode,
+} from '../common/outbound-url.guard';
 import { validateAppManifest } from './app-manifest.util';
 import type { AppManifest } from './app-manifest.types';
 
@@ -37,6 +42,7 @@ const COMMIT_PATTERN = /^[0-9a-f]{40}$/i;
  */
 @Injectable()
 export class AppBundleService {
+  private readonly logger = new Logger(AppBundleService.name);
   private readonly MAX_BUNDLE_BYTES = 200 * 1024 * 1024;
   private readonly DOWNLOAD_TIMEOUT_MS = 30_000;
   private readonly MAX_CACHE_ENTRIES = 3;
@@ -51,6 +57,11 @@ export class AppBundleService {
    */
   private readonly MAX_CACHE_BYTES = 8 * 1024 * 1024;
   private readonly cache = new Map<string, LoadedBundle>();
+
+  constructor() {
+    // Read once at startup so an unrecognised OUTBOUND_URL_GUARD value is warned about at boot.
+    outboundUrlGuardMode();
+  }
 
   /** Decompressed size of a bundle's entries — what retaining it actually costs. */
   private bundleBytes(files: Record<string, Uint8Array>): number {
@@ -96,6 +107,8 @@ export class AppBundleService {
       }
     }
 
+    await this.assertBundleHost(url);
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.DOWNLOAD_TIMEOUT_MS);
     let res: Response;
@@ -127,6 +140,28 @@ export class AppBundleService {
     }
 
     return this.loadFromBuffer(new Uint8Array(arrayBuffer), expectedSha256);
+  }
+
+  /**
+   * The bundle URL comes from the registry (operator-controlled via
+   * `APPS_REGISTRY_URL`), so this is defence in depth (#770): the host is
+   * resolved and every address must be public, under `OUTBOUND_URL_GUARD` —
+   * `warn` (default) logs and downloads anyway; `reject` fails the install
+   * preflight with a clear step error. The same hosts `validateTargetUrl`
+   * treats as declared-internal are exempt, so a local registry keeps working.
+   */
+  private async assertBundleHost(url: string): Promise<void> {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BadRequestException(`Bundle URL is not a valid URL: ${url}`);
+    }
+    if (isExplicitlyInternalHost(parsed.hostname)) return;
+    await guardOutboundHost(parsed.hostname, {
+      subject: `app bundle ${url}`,
+      logger: this.logger,
+    });
   }
 
   async loadFromBuffer(buf: Uint8Array, expectedSha256?: string): Promise<LoadedBundle> {
