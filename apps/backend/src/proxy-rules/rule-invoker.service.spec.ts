@@ -82,9 +82,17 @@ function make(rules: unknown[]) {
       },
     }),
   };
-  const service = new RuleInvokerService(proxyRulesService as never, execution as never);
-  return { service, proxyRulesService, execution };
+  const executionLog = { log: jest.fn().mockResolvedValue('log-1') };
+  const service = new RuleInvokerService(
+    proxyRulesService as never,
+    execution as never,
+    executionLog as never,
+  );
+  return { service, proxyRulesService, execution, executionLog };
 }
+
+/** Let the fire-and-forget persistence chain settle. */
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 const base = {
   projectId: 'proj-1',
@@ -95,6 +103,7 @@ const base = {
   body: { a: 1 },
   user: { id: 'u', credential: 'app_token' as const, scopes: ['app:read'] },
   parent,
+  parentRuleId: 'rule-mcp',
   depth: 1,
 };
 
@@ -313,6 +322,132 @@ describe('RuleInvokerService', () => {
     expect(structuredBody('{not json', 'application/json')).toBe('{not json');
   });
 
+  describe('execution logs (#738): a sibling is logged the way the edge logs the rule', () => {
+    const debugInfo = {
+      validators: [],
+      steps: [{ name: 'respond', handlerType: 'response_handler', success: true }],
+      totalDurationMs: 3,
+      startTime: 's',
+      endTime: 'e',
+    };
+
+    it('a debugEnabled sibling captures debug and persists one row tagged as an in-process invocation', async () => {
+      const { service, execution, executionLog } = make([rule({ debugEnabled: true })]);
+      execution.executePipelineWithDebug.mockResolvedValueOnce({
+        success: true,
+        response: { status: 200, body: { ok: true }, headers: {} },
+        debug: debugInfo,
+      });
+      const result = await service.invoke(base);
+      expect(result).toMatchObject({ ok: true, answer: { status: 200 } });
+      expect(execution.executePipelineWithDebug.mock.calls[0][3]).toEqual({
+        deployment: base.deployment,
+        captureDebug: true,
+      });
+      await flush();
+      expect(executionLog.log).toHaveBeenCalledTimes(1);
+      const [ruleId, projectId, logged, meta, method, path] = executionLog.log.mock.calls[0];
+      expect(ruleId).toBe('rule-1');
+      expect(projectId).toBe('proj-1');
+      expect(logged.debug).toBe(debugInfo);
+      expect(meta).toEqual({
+        ip: '1.2.3.4',
+        userAgent: 'ua',
+        userId: 'u',
+        invocation: { source: 'in_process', parentRuleId: 'rule-mcp', depth: 1 },
+      });
+      expect(method).toBe('POST');
+      expect(path).toBe('/api/app/read');
+    });
+
+    it('a sibling with debug off persists nothing on success or on a client-fault outcome', async () => {
+      const { service, execution, executionLog } = make([rule({ debugEnabled: false })]);
+      await service.invoke(base);
+      expect(execution.executePipelineWithDebug.mock.calls[0][3]).toEqual({
+        deployment: base.deployment,
+        captureDebug: false,
+      });
+      for (const code of [
+        'VALIDATION_ERROR',
+        'AUTH_REQUIRED',
+        'AUTHORIZATION_ERROR',
+        'RATE_LIMIT_EXCEEDED',
+      ]) {
+        execution.executePipelineWithDebug.mockResolvedValueOnce({
+          success: false,
+          error: { code, message: 'no' },
+        });
+        mockDb.limit.mockResolvedValueOnce([project]).mockResolvedValueOnce([aliasRow]);
+        await service.invoke(base);
+      }
+      await flush();
+      expect(executionLog.log).not.toHaveBeenCalled();
+    });
+
+    it('an execution failure is always persisted, debug off (#724 parity), under its 500 status', async () => {
+      const { service, execution, executionLog } = make([rule({ debugEnabled: false })]);
+      execution.executePipelineWithDebug.mockResolvedValueOnce({
+        success: false,
+        error: { code: 'HANDLER_ERROR', message: 'boom', step: 'respond' },
+      });
+      expect(await service.invoke(base)).toMatchObject({ ok: true, answer: { status: 500 } });
+      await flush();
+      expect(executionLog.log).toHaveBeenCalledTimes(1);
+      expect(executionLog.log.mock.calls[0][2]).toEqual({
+        success: false,
+        error: { code: 'HANDLER_ERROR', message: 'boom', step: 'respond' },
+      });
+      expect(executionLog.log.mock.calls[0][3].invocation).toEqual({
+        source: 'in_process',
+        parentRuleId: 'rule-mcp',
+        depth: 1,
+      });
+    });
+
+    it('a thrown execution is answered as an error failure and still persisted', async () => {
+      const { service, execution, executionLog } = make([rule({ debugEnabled: false })]);
+      execution.executePipelineWithDebug.mockRejectedValueOnce(new Error('kaboom'));
+      expect(await service.invoke(base)).toEqual({
+        ok: false,
+        failure: { kind: 'error', message: 'kaboom' },
+      });
+      await flush();
+      expect(executionLog.log).toHaveBeenCalledTimes(1);
+      expect(executionLog.log.mock.calls[0][2]).toEqual({
+        success: false,
+        error: { code: 'PIPELINE_EXECUTION_ERROR', message: 'kaboom' },
+      });
+    });
+
+    it('waits for post-steps so their debug info lands in the row, and omits parentRuleId when unknown', async () => {
+      const { service, execution, executionLog } = make([rule({ debugEnabled: true })]);
+      const postSteps = [{ name: 'after', handlerType: 'webhook', success: true }];
+      const debug = { ...debugInfo };
+      execution.executePipelineWithDebug.mockResolvedValueOnce({
+        success: true,
+        response: { status: 200, body: {}, headers: {} },
+        debug,
+        postStepsPromise: Promise.resolve(postSteps),
+      });
+      await service.invoke({ ...base, parentRuleId: undefined });
+      await flush();
+      expect(executionLog.log).toHaveBeenCalledTimes(1);
+      expect(executionLog.log.mock.calls[0][2].debug.postSteps).toBe(postSteps);
+      expect(executionLog.log.mock.calls[0][3].invocation).toEqual({
+        source: 'in_process',
+        depth: 1,
+      });
+    });
+
+    it('a failing insert never reaches the caller', async () => {
+      const { service, executionLog } = make([rule({ debugEnabled: true })]);
+      executionLog.log.mockRejectedValueOnce(new Error('db down'));
+      expect(await service.invoke(base)).toMatchObject({ ok: true, answer: { status: 200 } });
+      await flush();
+      expect(executionLog.log).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("caches the alias's rules for a short window", async () => {
     const { service, proxyRulesService } = make([rule()]);
     await service.invoke(base);
@@ -377,7 +512,11 @@ describe('publicPrefixOf', () => {
         .fn()
         .mockResolvedValue({ success: true, response: { status: 200, body: {} } }),
     };
-    const service = new RuleInvokerService(proxyRulesService as never, execution as never);
+    const service = new RuleInvokerService(
+      proxyRulesService as never,
+      execution as never,
+      { log: jest.fn().mockResolvedValue('log-1') } as never,
+    );
     mockDb.limit.mockReset();
     mockDb.limit.mockResolvedValueOnce([project]).mockResolvedValueOnce([aliasRow]);
     const parentEdge = {

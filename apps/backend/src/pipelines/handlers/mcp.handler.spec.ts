@@ -146,6 +146,7 @@ describe('McpHandler', () => {
           body: { a: 1 },
           user: c.user,
           parent: c.request,
+          parentRuleId: c.pipelineId,
           depth: 1,
         }),
       );

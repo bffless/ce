@@ -22,6 +22,21 @@ export interface PipelineLogRequestMeta {
   ip?: string;
   userAgent?: string;
   userId?: string;
+  /**
+   * Present when the run was not an edge request but an in-process sibling
+   * invocation (`RuleInvokerService`, e.g. an `mcp_handler` tool call): the
+   * rule that invoked it and the nesting depth (#738). Absent for edge runs.
+   */
+  invocation?: PipelineLogInvocationMeta;
+}
+
+/** How an in-process pipeline run was reached — stored in `requestMeta.invocation`. */
+export interface PipelineLogInvocationMeta {
+  source: 'in_process';
+  /** The calling rule's id (its pipeline id), when known. */
+  parentRuleId?: string;
+  /** The invocation depth: 1 for a sibling called directly by an edge-run rule. */
+  depth: number;
 }
 
 /**
