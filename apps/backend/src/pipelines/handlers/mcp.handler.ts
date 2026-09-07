@@ -143,6 +143,7 @@ export class McpHandler implements StepHandler<McpHandlerConfig> {
             body: method === 'POST' ? args : undefined,
             user: context.user,
             parent: context.request,
+            parentRuleId: context.pipelineId,
             depth: parentDepth + 1,
           }),
         origins: async () => ({

@@ -5,10 +5,16 @@ import { db } from '../db/client';
 import { deploymentAliases, projects } from '../db/schema';
 import { ProxyRule } from '../db/schema/proxy-rules.schema';
 import { PipelineExecutionService } from '../pipelines/execution';
-import { PipelineContext, PipelineUser } from '../pipelines/execution/pipeline-context.interface';
+import {
+  PipelineContext,
+  PipelineDebugResult,
+  PipelineUser,
+} from '../pipelines/execution/pipeline-context.interface';
+import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
 import { ProxyRulesService } from './proxy-rules.service';
 import {
   insufficientScopeHeader,
+  isExecutionFailure,
   pipelineFromRule,
   statusForPipelineError,
 } from './pipeline-from-rule';
@@ -29,6 +35,8 @@ export interface InvokeRequest {
   user: PipelineUser | undefined;
   /** The parent request: headers, cookies, ip, user-agent are copied onto the synthetic one. */
   parent: Request;
+  /** The calling rule's id (its pipeline id) — recorded on the sibling's execution log (#738). */
+  parentRuleId?: string;
   /** The parent's depth + 1; beyond MAX_INVOKE_DEPTH is refused. */
   depth: number;
 }
@@ -75,6 +83,8 @@ export class RuleInvokerService {
     private readonly proxyRulesService: ProxyRulesService,
     @Inject(forwardRef(() => PipelineExecutionService))
     private readonly pipelineExecutionService: PipelineExecutionService,
+    @Inject(forwardRef(() => PipelineExecutionLogService))
+    private readonly executionLogService: PipelineExecutionLogService,
   ) {}
 
   async invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -148,12 +158,35 @@ export class RuleInvokerService {
     }
 
     const synthetic = this.syntheticRequest(req);
-    const result = await this.pipelineExecutionService.executePipelineWithDebug(
-      pipeline,
-      synthetic,
-      req.user,
-      { deployment: req.deployment, captureDebug: false },
-    );
+    let result: PipelineDebugResult;
+    try {
+      result = await this.pipelineExecutionService.executePipelineWithDebug(
+        pipeline,
+        synthetic,
+        req.user,
+        // Only retain in-memory debug snapshots when this rule persists them —
+        // the edge's rule (handlePipelineExecution), not a blanket `false`.
+        { deployment: req.deployment, captureDebug: rule.debugEnabled },
+      );
+    } catch (error) {
+      // A thrown error is an execution failure: always leave a row (#724),
+      // as the edge does, so an mcp_handler tool that blew up is visible.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Sibling pipeline ${rule.id} failed: ${message}`);
+      this.persistLog(
+        rule,
+        req,
+        synthetic,
+        { success: false, error: { code: 'PIPELINE_EXECUTION_ERROR', message } },
+        true,
+      );
+      return { ok: false, failure: { kind: 'error', message } };
+    }
+
+    // Same persistence gate as the edge: debug-enabled rules log every run;
+    // execution failures (the 500 bucket) always log; client-fault validator
+    // outcomes (400/401/403/429) stay debug-gated.
+    this.persistLog(rule, req, synthetic, result, rule.debugEnabled || isExecutionFailure(result));
 
     if (result.success && result.response) {
       const headers = { ...(result.response.headers ?? {}) };
@@ -181,6 +214,56 @@ export class RuleInvokerService {
         contentType: 'application/json',
       },
     };
+  }
+
+  /**
+   * Fire-and-forget: persist the sibling's execution log the way the edge does
+   * for a rule it runs itself, tagged as an in-process invocation
+   * (`requestMeta.invocation`: the calling rule and the depth) so an operator
+   * reading the rule's logs can tell a tool call from an edge request (#738).
+   * Post-steps are awaited first so their debug info is included. Never
+   * throws and never delays the answer.
+   */
+  private persistLog(
+    rule: ProxyRule,
+    req: InvokeRequest,
+    synthetic: Request,
+    result: PipelineDebugResult,
+    shouldPersist: boolean,
+  ): void {
+    if (!shouldPersist) return;
+    const persist = async () => {
+      if (result.postStepsPromise) {
+        try {
+          const postStepsDebug = await result.postStepsPromise;
+          if (result.debug && postStepsDebug.length > 0) {
+            result.debug.postSteps = postStepsDebug;
+          }
+        } catch (err) {
+          this.logger.error('Failed to capture post-steps debug info', err);
+        }
+      }
+      await this.executionLogService.log(
+        rule.id,
+        req.projectId,
+        result,
+        {
+          ip: synthetic.ip,
+          userAgent: first(synthetic.headers['user-agent']),
+          userId: req.user?.id,
+          invocation: {
+            source: 'in_process',
+            ...(req.parentRuleId ? { parentRuleId: req.parentRuleId } : {}),
+            depth: req.depth,
+          },
+        },
+        req.method,
+        synthetic.path,
+      );
+    };
+    persist().catch((err) =>
+      this.logger.error('Failed to persist pipeline execution log for sibling invocation', err),
+    );
   }
 
   /**

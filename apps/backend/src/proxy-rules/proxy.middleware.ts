@@ -30,6 +30,7 @@ import {
 } from '../pipelines/execution/pipeline-context.interface';
 import {
   insufficientScopeHeader,
+  isExecutionFailure,
   pipelineFromRule,
   statusForPipelineError,
 } from './pipeline-from-rule';
@@ -60,21 +61,6 @@ interface CacheEntry {
   rules: ProxyRule[];
   expiry: number;
 }
-
-/**
- * Pipeline error codes that map to a 4xx response (see the status mapping in
- * handlePipelineExecution): validator outcomes an anonymous caller can trigger
- * on any public rule. These stay debug-gated for execution-log persistence;
- * everything else in a failed result is treated as an execution failure and is
- * always logged (#724). Expressed as an exclusion list so a future unmapped
- * error code defaults to "persist" (fail-visible), matching its 500 response.
- */
-const CLIENT_FAULT_ERROR_CODES: ReadonlySet<string> = new Set([
-  'VALIDATION_ERROR', // 400
-  'AUTH_REQUIRED', // 401
-  'AUTHORIZATION_ERROR', // 403
-  'RATE_LIMIT_EXCEEDED', // 429
-]);
 
 @Injectable()
 export class ProxyMiddleware implements NestMiddleware {
@@ -1206,9 +1192,7 @@ export class ProxyMiddleware implements NestMiddleware {
       // load exactly under rate-limit/bot pressure and crowd the small
       // per-rule retention window with 4xx noise. An unmapped error code
       // defaults to "persist" (fail-visible).
-      const isExecutionFailure =
-        !result.success && !CLIENT_FAULT_ERROR_CODES.has(result.error?.code ?? '');
-      const shouldPersistLog = rule.debugEnabled || isExecutionFailure;
+      const shouldPersistLog = rule.debugEnabled || isExecutionFailure(result);
       const logId = shouldPersistLog ? randomUUID() : undefined;
 
       if (result.success && result.response) {
