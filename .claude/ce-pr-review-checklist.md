@@ -342,6 +342,38 @@ classification branch live; the first cut redirected `Accept: */*` and replaced 
 
 ---
 
+### A Nest module cycle that only surfaces at boot passes every unit test
+**Surface:** any new `X` in a `@Module({ imports: [X] })` array under `apps/backend/src/*/*.module.ts`,
+especially a new cross-domain edge (PipelinesModule → OAuthModule in #761 was the one that bit).
+**Check:** Trace the CommonJS require order from `app.module.ts`: does the new edge close a cycle back to a
+module file that is still mid-evaluation? If so the referenced class is `undefined` when the decorator
+runs, and Nest refuses to boot with "The module at index [n] of the X imports array is undefined". The fix
+is `forwardRef(() => X)` on the edge inside the cycle. `apps/backend/src/app.module.spec.ts` walks every
+reachable imports array and fails on `undefined`; a PR that adds a module edge should leave it green and
+should not skip it. Unit suites that import one module in isolation never load enough of the graph to see
+this — CI was green for v0.4.52 and v0.4.53, both of which crash-looped on start.
+**Why:** The failure is total (the backend never listens), invisible in CI, and reaches self-hosters on the
+next `:latest` pull. #773 was the hotfix; v0.4.51 was the rollback target.
+**Learned from:** #761 → #773, 2026-09-07.
+
+---
+
+### A service-level spec that bypasses `ValidationPipe` can assert behaviour a DTO already forecloses
+**Surface:** any `*.service.spec.ts` that calls a service method directly with a hand-built DTO object,
+where the matching controller `@Body()` DTO carries `class-validator` rules (`IsValidTargetUrlOrPath`,
+`IsValidSyncTargetUrl`, `@ValidateNested`, …) and `main.ts` runs the global `ValidationPipe`.
+**Check:** When a PR claims a new behaviour at an HTTP endpoint ("under `warn` a plain-http target is now a
+warning, not a 400"), does a test exercise the *real* pipe — supertest with `main.ts`'s exact
+`ValidationPipe` options, as `oauth-register-http.spec.ts` and `proxy-rule-sets-target-guard-http.spec.ts`
+do — or only the service? A service spec can pass while asserting an outcome the endpoint can never
+produce, because the DTO rejected the payload first. Check the DTO before believing the PR body.
+**Why:** #782's first cut documented "push/import/copy now warn on plain-http targets" and shipped tests
+for it; the sync and import DTOs had always 400'd that payload, so the claim, the `.env.example` text and
+two tests were wrong until the reviewer traced the DTO.
+**Learned from:** #782, 2026-09-07.
+
+---
+
 ## Entry template
 
 ```
