@@ -48,6 +48,8 @@ export const CODE_TTL_MS = 10 * 60_000;
 export const PENDING_REQUEST_TTL_S = 10 * 60;
 const SUPPORTED_GRANT_TYPES = ['authorization_code', 'refresh_token'];
 const REFRESH_PREFIX = 'bfrt_';
+/** Canonical hyphenated uuid — the shape `oauth_clients.client_id` is issued and stored in. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** What a fetch of the resource's protected-resource document must do (injected for tests). */
 export type FetchLike = (
@@ -238,9 +240,16 @@ export class OAuthService {
    * so codes, refresh tokens and the App Tokens page (`OAuth: <client_name>`)
    * work exactly as for a registered client. A URL that fails the guard or
    * whose document is invalid throws `invalid_client`, as an unknown uuid does.
+   *
+   * A value that is neither is unknown too: `oauth_clients.client_id` is a
+   * `uuid` column, so querying it with anything else makes Postgres raise
+   * `invalid input syntax for type uuid` (22P02) — a 500 where the caller
+   * should see `invalid_client` (#767). Registered ids are issued in canonical
+   * hyphenated form, so that is the only shape worth looking up.
    */
   private async clientFor(clientId: string): Promise<OAuthClient | undefined> {
     if (!this.clientMetadata.isClientIdUrl(clientId)) {
+      if (!UUID_PATTERN.test(clientId)) return undefined;
       const [client] = await db
         .select()
         .from(oauthClients)

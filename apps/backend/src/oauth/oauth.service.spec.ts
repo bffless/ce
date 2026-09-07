@@ -23,8 +23,10 @@ jest.mock('../db/client', () => {
 });
 const mockDb = jest.requireMock('../db/client').db as Record<string, jest.Mock>;
 
+// `oauth_clients.client_id` is a uuid column; a registered client is only ever looked up by one (#767).
+const CLIENT_UUID = '0f4c1e6a-7b2d-4c58-9a3e-1d2f3a4b5c6d';
 const client = {
-  clientId: 'c1',
+  clientId: CLIENT_UUID,
   clientName: 'Claude',
   redirectUris: ['https://claude.ai/cb'],
   grantTypes: ['authorization_code', 'refresh_token'],
@@ -100,7 +102,7 @@ function make(configOverrides: Record<string, string | undefined> = {}) {
 
 const authorizeParams = (over: Record<string, unknown> = {}) => ({
   response_type: 'code',
-  client_id: 'c1',
+  client_id: CLIENT_UUID,
   redirect_uri: 'https://claude.ai/cb',
   code_challenge: challengeOf(verifier),
   code_challenge_method: 'S256',
@@ -160,7 +162,7 @@ describe('OAuthService', () => {
         client_name: 'Claude',
       });
       expect(out).toMatchObject({
-        client_id: 'c1',
+        client_id: CLIENT_UUID,
         client_name: 'Claude',
         token_endpoint_auth_method: 'none',
         response_types: ['code'],
@@ -215,14 +217,17 @@ describe('OAuthService', () => {
         }),
       );
       expect(pending).toMatchObject({
-        clientId: 'c1',
+        clientId: CLIENT_UUID,
         projectId: 'p1',
         projectSlug: 'bffless/workflow',
         scopes: ['workflow:read', 'workflow:run', 'workflow:files'],
         state: 'xyz',
       });
       expect(pending.exp - pending.iat).toBe(600);
-      expect(service.readPending(request)).toMatchObject({ clientId: 'c1', projectId: 'p1' });
+      expect(service.readPending(request)).toMatchObject({
+        clientId: CLIENT_UUID,
+        projectId: 'p1',
+      });
     });
     it('resolves the www/non-www alternate of the resource host, like every other domain lookup', async () => {
       const { service } = make();
@@ -413,6 +418,22 @@ describe('OAuthService', () => {
         service.beginAuthorization(authorizeParams({ code_challenge_method: 'plain' }), prm),
       ).rejects.toMatchObject({ error: 'invalid_request' });
     });
+    it('a client_id that is neither a uuid nor a metadata URL is an unknown client, not a query (#767)', async () => {
+      const { service, clientMetadata } = make();
+      // Nothing is ever looked up: the uuid column would reject the value with a
+      // Postgres 22P02 and the request would 500 before invalid_client fired.
+      for (const client_id of ['not-a-client', 'c1', ' ', 'http:/x', CLIENT_UUID + 'x']) {
+        const err = await service.beginAuthorization(authorizeParams({ client_id }), prm).then(
+          () => null,
+          (e: OAuthError) => e,
+        );
+        expect(err).toBeInstanceOf(OAuthError);
+        expect(err).toMatchObject({ error: 'invalid_client', description: 'unknown client_id' });
+        expect(err!.getStatus()).toBe(401);
+      }
+      expect(mockDb.select).not.toHaveBeenCalled();
+      expect(clientMetadata.resolve).not.toHaveBeenCalled();
+    });
     it('rejects a tampered or expired pending request', () => {
       const { service } = make();
       expect(() => service.readPending('nope')).toThrow(OAuthError);
@@ -558,7 +579,7 @@ describe('OAuthService', () => {
       jwt.sign(
         {
           kind: 'oauth_pending',
-          clientId: 'c1',
+          clientId: CLIENT_UUID,
           clientName: 'Claude',
           redirectUri: 'https://claude.ai/cb',
           codeChallenge: challengeOf(verifier),
@@ -629,7 +650,7 @@ describe('OAuthService', () => {
   describe('token: authorization_code', () => {
     const codeRow = (over: Record<string, unknown> = {}) => ({
       codeHash: hashToken('the-code'),
-      clientId: 'c1',
+      clientId: CLIENT_UUID,
       userId: 'u1',
       projectId: 'p1',
       scopes: ['workflow:read'],
@@ -643,7 +664,7 @@ describe('OAuthService', () => {
     const body = (over: Record<string, unknown> = {}) => ({
       grant_type: 'authorization_code',
       code: 'the-code',
-      client_id: 'c1',
+      client_id: CLIENT_UUID,
       redirect_uri: 'https://claude.ai/cb',
       code_verifier: verifier,
       ...over,
@@ -670,7 +691,11 @@ describe('OAuthService', () => {
         'u1',
         'user',
         { name: 'OAuth: Claude', project: 'bffless/workflow', scopes: ['workflow:read'] },
-        expect.objectContaining({ kind: 'oauth', clientId: 'c1', expiresAt: expect.any(Date) }),
+        expect.objectContaining({
+          kind: 'oauth',
+          clientId: CLIENT_UUID,
+          expiresAt: expect.any(Date),
+        }),
       );
       const refreshRow = mockDb.values.mock.calls.find((c) => c[0].familyId)![0];
       expect(refreshRow.familyId).toBe(familyOfCode(hashToken('the-code')));
@@ -706,7 +731,7 @@ describe('OAuthService', () => {
       mockDb.limit.mockResolvedValueOnce([
         {
           codeHash: hashToken('the-code'),
-          clientId: 'c1',
+          clientId: CLIENT_UUID,
           userId: 'u1',
           projectId: 'p1',
           scopes: ['workflow:read'],
@@ -726,7 +751,7 @@ describe('OAuthService', () => {
         service.token({
           grant_type: 'authorization_code',
           code: 'the-code',
-          client_id: 'c1',
+          client_id: CLIENT_UUID,
           redirect_uri: 'https://claude.ai/cb',
           code_verifier: verifier,
         }),
@@ -743,7 +768,7 @@ describe('OAuthService', () => {
         {
           tokenHash: hashToken('bfrt_old'),
           familyId: 'fam-1',
-          clientId: 'c1',
+          clientId: CLIENT_UUID,
           userId: 'u1',
           projectId: 'p1',
           scopes: ['workflow:read'],
@@ -758,7 +783,11 @@ describe('OAuthService', () => {
         .mockReturnValueOnce(mockDb)
         .mockResolvedValueOnce([]);
       await expect(
-        service.token({ grant_type: 'refresh_token', refresh_token: 'bfrt_old', client_id: 'c1' }),
+        service.token({
+          grant_type: 'refresh_token',
+          refresh_token: 'bfrt_old',
+          client_id: CLIENT_UUID,
+        }),
       ).rejects.toMatchObject({ error: 'invalid_grant' });
       expect(appTokens.create).not.toHaveBeenCalled();
     });
@@ -768,7 +797,7 @@ describe('OAuthService', () => {
     const refreshRow = (over: Record<string, unknown> = {}) => ({
       tokenHash: hashToken('bfrt_old'),
       familyId: 'fam-1',
-      clientId: 'c1',
+      clientId: CLIENT_UUID,
       userId: 'u1',
       projectId: 'p1',
       scopes: ['workflow:read', 'workflow:run'],
@@ -790,7 +819,7 @@ describe('OAuthService', () => {
       const out = await service.token({
         grant_type: 'refresh_token',
         refresh_token: 'bfrt_old',
-        client_id: 'c1',
+        client_id: CLIENT_UUID,
       });
       expect(out.refresh_token).not.toBe('bfrt_old');
       expect(mockDb.set).toHaveBeenCalledWith({ rotatedAt: expect.any(Date) });
