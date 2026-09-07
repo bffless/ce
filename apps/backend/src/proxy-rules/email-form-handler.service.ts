@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { verifySession } from 'supertokens-node/recipe/session/framework/express';
-import { SessionContainer } from 'supertokens-node/recipe/session';
+import { getSession, SessionContainer } from 'supertokens-node/recipe/session';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { users } from '../db/schema';
 import { EmailService } from '../email/email.service';
 import { ProxyRule } from '../db/schema/proxy-rules.schema';
+import { SESSION_401_NO_SESSION, sessionErrorMessage } from '../auth/session-auth.guard';
 
 interface AuthenticatedUser {
   id: string;
@@ -407,68 +407,85 @@ export class EmailFormHandlerService {
   /**
    * Validate the session and return authenticated user details.
    * Returns null and sends error response if not authenticated.
+   *
+   * Reads the session with getSession(sessionRequired: false). The express
+   * verifySession() middleware must NOT be used here: on a missing session it
+   * writes SuperTokens' own 401 and never calls back, so the returned promise
+   * never settled and the client saw SuperTokens' body instead of this handler's
+   * documented one (issue #777, same root cause as #775). getSession resolves
+   * undefined when there is no session and rejects for a present-but-invalid
+   * token (TRY_REFRESH_TOKEN) - both take the 401 path, which this handler owns.
    */
   private async validateSession(req: Request, res: Response): Promise<AuthenticatedUser | null> {
-    return new Promise((resolve) => {
-      verifySession()(req, res, async (err) => {
-        if (err) {
-          this.logger.debug(`Session validation failed: ${err.message}`);
-          res.status(401).json({
-            success: false,
-            error: 'Unauthorized',
-            message: 'Authentication required to submit this form',
-          });
-          resolve(null);
-          return;
-        }
+    let session: SessionContainer | undefined;
+    try {
+      session = await getSession(req, res, { sessionRequired: false });
+    } catch (error) {
+      this.logger.debug(`Session validation failed: ${(error as Error)?.message ?? error}`);
+      this.sendUnauthorized(res, sessionErrorMessage(error));
+      return null;
+    }
 
-        // Session is now available on request.session
-        const session = (req as Request & { session?: SessionContainer }).session;
+    if (!session) {
+      this.sendUnauthorized(res, SESSION_401_NO_SESSION);
+      return null;
+    }
 
-        if (!session) {
-          res.status(401).json({
-            success: false,
-            error: 'Unauthorized',
-            message: 'No active session',
-          });
-          resolve(null);
-          return;
-        }
+    // verifySession() used to set request.session as a side effect; getSession()
+    // does not. Nothing downstream of this handler reads it today, but keep the
+    // request shaped the same way as the auth guards leave it.
+    (req as Request & { session?: SessionContainer }).session = session;
 
-        const userId = session.getUserId();
+    const userId = session.getUserId();
 
-        // Fetch user details from database
-        try {
-          const [user] = await db
-            .select({ id: users.id, email: users.email })
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
+    // Fetch user details from database
+    try {
+      const [user] = await db
+        .select({ id: users.id, email: users.email })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
 
-          if (!user) {
-            res.status(401).json({
-              success: false,
-              error: 'Unauthorized',
-              message: 'User not found',
-            });
-            resolve(null);
-            return;
-          }
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          error: 'Unauthorized',
+          message: 'User not found',
+        });
+        return null;
+      }
 
-          resolve({
-            id: user.id,
-            email: user.email || undefined,
-          });
-        } catch (dbError) {
-          this.logger.error(`Failed to fetch user details: ${dbError}`);
-          res.status(500).json({
-            success: false,
-            error: 'Internal Server Error',
-            message: 'Failed to validate user',
-          });
-          resolve(null);
-        }
+      return {
+        id: user.id,
+        email: user.email || undefined,
+      };
+    } catch (dbError) {
+      this.logger.error(`Failed to fetch user details: ${dbError}`);
+      res.status(500).json({
+        success: false,
+        error: 'Internal Server Error',
+        message: 'Failed to validate user',
       });
+      return null;
+    }
+  }
+
+  /**
+   * The handler's documented 401 body for a form that requires auth. `reason`
+   * carries the same text SuperTokens' error handler used to answer these
+   * requests with ("unauthorised" / "try refresh token") so a client that keyed
+   * on it can still tell "no session" from "refresh and retry".
+   */
+  private sendUnauthorized(res: Response, reason: string): void {
+    // Never write over a response something upstream already sent.
+    if (res.headersSent) {
+      return;
+    }
+    res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Authentication required to submit this form',
+      reason,
     });
   }
 }
