@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.55](https://github.com/bffless/ce/compare/v0.4.54...v0.4.55) (2026-09-07)
+
+
+### Added
+
+* **proxy-rules:** honour OUTBOUND_URL_GUARD on rules push, import and copy ([#782](https://github.com/bffless/ce/issues/782)) ([ddaae04](https://github.com/bffless/ce/commit/ddaae04eebac93b5707141991d85917c612e5a1a))
+
+
+### Fixed
+
+* **auth:** stop SessionAuthGuard/ApiKeyGuard double-writing the response on a missing session ([#776](https://github.com/bffless/ce/issues/776)) ([6abad3b](https://github.com/bffless/ce/commit/6abad3b5f759bbee39b901a44faae8a4dfe0dabf))
+* **auth:** unify isApiRequest so SPA fetches are never answered with a 302 ([#783](https://github.com/bffless/ce/issues/783)) ([e83f7f0](https://github.com/bffless/ce/commit/e83f7f0e10bf1bcc37a0d89a2867cb95f28bdab4)), closes [#778](https://github.com/bffless/ce/issues/778)
+* **proxy-rules:** email form handler answers a missing session with its own 401 instead of hanging ([#781](https://github.com/bffless/ce/issues/781)) ([e4fe950](https://github.com/bffless/ce/commit/e4fe950a9639c2e70e80f021fa82f077a44ee7a6)), closes [#777](https://github.com/bffless/ce/issues/777)
+
 ## [0.4.54](https://github.com/bffless/ce/compare/v0.4.53...v0.4.54) (2026-09-07)
 
 ### Fixed
