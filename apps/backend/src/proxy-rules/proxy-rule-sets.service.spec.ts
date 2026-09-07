@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { lookup as dnsLookup } from 'node:dns/promises';
 import { ProxyRuleSetsService } from './proxy-rule-sets.service';
 import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -17,6 +18,11 @@ import {
   type RuleSetExport,
 } from './export-format.util';
 import type { ProxyRuleSetRevision } from '../db/schema/proxy-rule-set-revisions.schema';
+
+// The outbound target guard resolves external rule targets on sync / import /
+// copy (#780); no real DNS in tests. Defaults to a public answer in beforeEach.
+jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
+const mockDnsLookup = dnsLookup as unknown as jest.Mock;
 
 // Mock the db client - using factory function for hoisting
 jest.mock('../db/client', () => {
@@ -184,6 +190,7 @@ describe('ProxyRuleSetsService', () => {
     mockDb.__reset();
     jest.clearAllMocks();
     mockPermissionsService.requireProjectAccess.mockResolvedValue(undefined);
+    mockDnsLookup.mockResolvedValue([{ address: '104.18.1.1', family: 4 }]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -1036,6 +1043,56 @@ describe('ProxyRuleSetsService', () => {
       expect(insertedRule.headerConfig).toEqual(encryptedHeaderConfig);
       expect(insertedRule.headerConfig).not.toEqual(decryptedHeaderConfig);
     });
+
+    describe('outbound target guard (#780)', () => {
+      const envBefore = process.env.OUTBOUND_URL_GUARD;
+      let warnSpy: jest.SpyInstance;
+
+      beforeEach(() => {
+        warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        mockDnsLookup.mockResolvedValue([{ address: '10.0.0.5', family: 4 }]);
+      });
+      afterEach(() => {
+        warnSpy.mockRestore();
+        // The reject case throws before arrangeCopy's second queued once-answer
+        // (the read-back) is consumed; clearAllMocks does not drain once-queues.
+        mockProxyRulesService.getRulesByRuleSetId.mockReset();
+        if (envBefore === undefined) delete process.env.OUTBOUND_URL_GUARD;
+        else process.env.OUTBOUND_URL_GUARD = envBefore;
+      });
+
+      it('warn (default): copies the set and logs one line per flagged rule, naming the copy', async () => {
+        delete process.env.OUTBOUND_URL_GUARD;
+        const { copiedRule } = arrangeCopy(
+          createMockRule({ method: 'GET', targetUrl: 'https://intranet.example' }),
+        );
+
+        const result = await service.copy('rule-set-1', 'user-1', 'admin', 'project-1');
+
+        expect(result.id).toBe('copy-set-id');
+        expect(result.rules).toEqual([copiedRule]);
+        expect(mockDb.insert).toHaveBeenCalledTimes(2); // set + rule
+        const lines = warnSpy.mock.calls.map((c) => String(c[0]));
+        expect(lines).toEqual([
+          'Rule set "api-backend (Copy)" (copy-set-id): Rule "GET /api/*": target https://intranet.example — intranet.example resolves to a non-public address (10.0.0.5); allowed because OUTBOUND_URL_GUARD=warn',
+        ]);
+      });
+
+      it('reject: a 400 listing the rule, and nothing is written', async () => {
+        process.env.OUTBOUND_URL_GUARD = 'reject';
+        arrangeCopy(createMockRule({ targetUrl: 'https://intranet.example' }));
+
+        const attempt = service.copy('rule-set-1', 'user-1', 'admin', 'project-1');
+
+        await expect(attempt).rejects.toThrow(BadRequestException);
+        await expect(attempt).rejects.toThrow(
+          /OUTBOUND_URL_GUARD=reject: Rule "\/api\/\*": target https:\/\/intranet\.example .*10\.0\.0\.5/,
+        );
+        expect(mockDb.insert).not.toHaveBeenCalled();
+        expect(mockProxyRuleSetRevisionsService.capture).not.toHaveBeenCalled();
+        expect(warnSpy).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('importRuleSet', () => {
@@ -1073,6 +1130,72 @@ describe('ProxyRuleSetsService', () => {
         rules: insertedRules,
         trigger: 'import',
         userId: 'user-1',
+      });
+    });
+
+    describe('outbound target guard (#780)', () => {
+      const envBefore = process.env.OUTBOUND_URL_GUARD;
+      let warnSpy: jest.SpyInstance;
+
+      const importWith = (rules: Record<string, unknown>[], schemas?: unknown[]) =>
+        service.importRuleSet(
+          'project-1',
+          {
+            ruleSet: { name: 'Imported Set' },
+            rules,
+            ...(schemas ? { schemas } : {}),
+          } as unknown as Parameters<typeof service.importRuleSet>[1],
+          'user-1',
+          'admin',
+          'project-1',
+        );
+
+      beforeEach(() => {
+        warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        mockDnsLookup.mockResolvedValue([{ address: '10.0.0.5', family: 4 }]);
+      });
+      afterEach(() => {
+        warnSpy.mockRestore();
+        if (envBefore === undefined) delete process.env.OUTBOUND_URL_GUARD;
+        else process.env.OUTBOUND_URL_GUARD = envBefore;
+      });
+
+      it('warn (default): imports the set and logs one line per flagged rule with the new set id', async () => {
+        delete process.env.OUTBOUND_URL_GUARD;
+        const newRuleSet = createMockRuleSet({ id: 'imported-set-id', name: 'Imported Set' });
+        mockDb.__setResults([[{ id: 'project-1' }], [], [newRuleSet]]);
+        mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+
+        const result = await importWith([
+          { pathPattern: '/api/*', method: 'POST', targetUrl: 'https://intranet.example' },
+          { pathPattern: '/ok/*', targetUrl: 'http://localhost:3000' },
+        ]);
+
+        expect(result.id).toBe('imported-set-id');
+        expect(mockDb.insert).toHaveBeenCalledTimes(3); // set + 2 rules
+        const lines = warnSpy.mock.calls.map((c) => String(c[0]));
+        expect(lines).toEqual([
+          'Rule set "Imported Set" (imported-set-id): Rule "POST /api/*": target https://intranet.example — intranet.example resolves to a non-public address (10.0.0.5); allowed because OUTBOUND_URL_GUARD=warn',
+        ]);
+      });
+
+      it('reject: a 400 listing the rule, before the bundled schemas or any row are created', async () => {
+        process.env.OUTBOUND_URL_GUARD = 'reject';
+        mockDb.__setResults([[{ id: 'project-1' }]]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+
+        const attempt = importWith(
+          [{ pathPattern: '/api/*', targetUrl: 'https://intranet.example' }],
+          [{ sourceId: 'src-1', name: 'contacts', action: 'create', fields: [] }],
+        );
+
+        await expect(attempt).rejects.toThrow(BadRequestException);
+        await expect(attempt).rejects.toThrow(
+          /OUTBOUND_URL_GUARD=reject: Rule "\/api\/\*": target https:\/\/intranet\.example .*10\.0\.0\.5/,
+        );
+        expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+        expect(mockProxyRuleSetRevisionsService.capture).not.toHaveBeenCalled();
       });
     });
   });
@@ -2195,6 +2318,198 @@ describe('ProxyRuleSetsService', () => {
 
         expect(result.warnings).toEqual([]);
         expect(mockPipelineSchemasService.getByProjectId).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('outbound target guard (#780)', () => {
+      const envBefore = process.env.OUTBOUND_URL_GUARD;
+      let warnSpy: jest.SpyInstance;
+
+      /** project lookup, findByName (no set), insert … returning */
+      const freshSet = () =>
+        mockDb.__setResults([
+          [mockProject],
+          [],
+          [createMockRuleSet({ id: 'new-set-id', name: 'api-backend' })],
+        ]);
+      const rule = (pathPattern: string, targetUrl: string, method?: string) => ({
+        pathPattern,
+        targetUrl,
+        ...(method ? { method } : {}),
+      });
+      const PRIVATE = [{ address: '10.0.0.5', family: 4 }];
+
+      beforeEach(() => {
+        warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+      });
+      afterEach(() => {
+        jest.useRealTimers();
+        warnSpy.mockRestore();
+        if (envBefore === undefined) delete process.env.OUTBOUND_URL_GUARD;
+        else process.env.OUTBOUND_URL_GUARD = envBefore;
+      });
+
+      it.each([
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://backend.default.svc:8080',
+        'http://backend.default.svc.cluster.local:8080',
+      ])(
+        'an explicitly internal target %s is neither resolved nor warned about, in reject mode too',
+        async (targetUrl) => {
+          process.env.OUTBOUND_URL_GUARD = 'reject';
+          freshSet();
+
+          const result = await sync(syncDto({ rules: [rule('/api/*', targetUrl)] }));
+
+          expect(result.warnings).toEqual([]);
+          expect(mockDnsLookup).not.toHaveBeenCalled();
+          expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it('warn (default): a public name resolving to a private address is one warning line and the rows are still written', async () => {
+        delete process.env.OUTBOUND_URL_GUARD;
+        mockDnsLookup.mockResolvedValue(PRIVATE);
+        freshSet();
+
+        const result = await sync(
+          syncDto({ rules: [rule('/api/*', 'https://public.example', 'GET')] }),
+        );
+
+        expect(result.warnings).toEqual([
+          'Rule "GET /api/*": target https://public.example — public.example resolves to a non-public address (10.0.0.5); allowed because OUTBOUND_URL_GUARD=warn',
+        ]);
+        expect(result.created).toEqual([{ pathPattern: '/api/*', method: 'GET' }]);
+        expect(result.setCreated).toBe(true);
+        expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+        expect(mockDb.insert).toHaveBeenCalledTimes(2); // set + rule
+      });
+
+      it('reject: a 400 listing the rule, and nothing is written — no set, no schema, no rule', async () => {
+        process.env.OUTBOUND_URL_GUARD = 'reject';
+        mockDnsLookup.mockResolvedValue(PRIVATE);
+        mockDb.__setResults([[mockProject]]);
+
+        const attempt = sync(
+          syncDto({
+            rules: [rule('/api/*', 'https://public.example', 'GET')],
+            schemas: [{ id: 'src-1', name: 'contacts', kind: 'data', fields: [] }],
+          }),
+        );
+
+        await expect(attempt).rejects.toThrow(BadRequestException);
+        await expect(attempt).rejects.toThrow(
+          'Proxy rule targets refused by OUTBOUND_URL_GUARD=reject: Rule "GET /api/*": target https://public.example — public.example resolves to a non-public address (10.0.0.5)',
+        );
+        expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+        expect(mockProxyRuleSetRevisionsService.capture).not.toHaveBeenCalled();
+      });
+
+      it('warn: a plain-http target to a public host (the protocol rule) is a warning on this door, not a 400', async () => {
+        delete process.env.OUTBOUND_URL_GUARD;
+        freshSet();
+
+        const result = await sync(syncDto({ rules: [rule('/api/*', 'http://public.example')] }));
+
+        expect(result.warnings).toEqual([
+          'Rule "/api/*": target http://public.example — Target URL must use HTTPS, or HTTP for internal services (*.svc, localhost); allowed because OUTBOUND_URL_GUARD=warn',
+        ]);
+        expect(mockDnsLookup).not.toHaveBeenCalled();
+        expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+      });
+
+      it('reject: the protocol rule fails the push like any other target failure', async () => {
+        process.env.OUTBOUND_URL_GUARD = 'reject';
+        mockDb.__setResults([[mockProject]]);
+
+        await expect(
+          sync(syncDto({ rules: [rule('/api/*', 'http://public.example')] })),
+        ).rejects.toThrow(/OUTBOUND_URL_GUARD=reject: Rule "\/api\/\*".*must use HTTPS/);
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+      });
+
+      it('dryRun reports the same warnings without writing', async () => {
+        delete process.env.OUTBOUND_URL_GUARD;
+        mockDnsLookup.mockResolvedValue(PRIVATE);
+        mockDb.__setResults([[mockProject], []]);
+
+        const result = await sync(
+          syncDto({
+            rules: [rule('/api/*', 'https://public.example', 'GET')],
+            options: { dryRun: true },
+          }),
+        );
+
+        expect(result.dryRun).toBe(true);
+        expect(result.warnings).toEqual([
+          expect.stringMatching(
+            /^Rule "GET \/api\/\*": target https:\/\/public\.example — .*10\.0\.0\.5/,
+          ),
+        ]);
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
+
+      it('reject: several bad rules are one error listing all of them, with one lookup per distinct host', async () => {
+        process.env.OUTBOUND_URL_GUARD = 'reject';
+        mockDnsLookup.mockImplementation(async (host: string) =>
+          host === 'one.example'
+            ? PRIVATE
+            : host === 'two.example'
+              ? [{ address: '192.168.1.1', family: 4 }]
+              : [{ address: '104.18.1.1', family: 4 }],
+        );
+        mockDb.__setResults([[mockProject]]);
+
+        const attempt = sync(
+          syncDto({
+            rules: [
+              rule('/a/*', 'https://one.example', 'GET'),
+              rule('/b/*', 'https://two.example', 'POST'),
+              rule('/c/*', 'https://one.example/other'),
+              rule('/ok/*', 'https://api.example.com'),
+            ],
+          }),
+        );
+
+        await expect(attempt).rejects.toThrow(
+          'Proxy rule targets refused by OUTBOUND_URL_GUARD=reject: ' +
+            'Rule "GET /a/*": target https://one.example — one.example resolves to a non-public address (10.0.0.5); ' +
+            'Rule "POST /b/*": target https://two.example — two.example resolves to a non-public address (192.168.1.1); ' +
+            'Rule "/c/*": target https://one.example/other — one.example resolves to a non-public address (10.0.0.5)',
+        );
+        expect(mockDnsLookup).toHaveBeenCalledTimes(3);
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+      });
+
+      it('a lookup that overruns the 3 s budget is "could not be verified": a warning under warn, a 400 under reject', async () => {
+        jest.useFakeTimers();
+        mockDnsLookup.mockReturnValue(new Promise(() => undefined));
+
+        delete process.env.OUTBOUND_URL_GUARD;
+        freshSet();
+        const warnAttempt = sync(syncDto({ rules: [rule('/api/*', 'https://slow.example')] }));
+        await jest.advanceTimersByTimeAsync(3000);
+        const result = await warnAttempt;
+        expect(result.warnings).toEqual([
+          'Rule "/api/*": target https://slow.example — slow.example could not be verified (lookup of slow.example timed out after 3000 ms); allowed because OUTBOUND_URL_GUARD=warn',
+        ]);
+        expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+
+        process.env.OUTBOUND_URL_GUARD = 'reject';
+        mockDb.transaction.mockClear();
+        mockDb.__setResults([[mockProject]]);
+        const rejectAttempt = sync(syncDto({ rules: [rule('/api/*', 'https://slow.example')] }));
+        rejectAttempt.catch(() => undefined);
+        await jest.advanceTimersByTimeAsync(3000);
+        await expect(rejectAttempt).rejects.toThrow(
+          /OUTBOUND_URL_GUARD=reject: Rule "\/api\/\*".*could not be verified.*timed out after 3000 ms/,
+        );
+        expect(mockDb.transaction).not.toHaveBeenCalled();
       });
     });
 

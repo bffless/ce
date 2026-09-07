@@ -1,12 +1,17 @@
 import { BadRequestException, Logger } from '@nestjs/common';
 import {
+  enforceOutboundVerdict,
   guardOutboundHost,
   isExplicitlyInternalHost,
   isPublicAddress,
   outboundUrlGuardMode,
+  OUTBOUND_LOOKUP_TIMEOUT_MS,
+  OutboundLookupTimeoutError,
   pinnedLookup,
   readCapped,
   vetOutboundHost,
+  vetOutboundHosts,
+  withLookupTimeout,
   type HostLookup,
 } from './outbound-url.guard';
 
@@ -237,6 +242,142 @@ describe('outbound-url.guard (#770)', () => {
         if (before === undefined) delete process.env.OUTBOUND_URL_GUARD;
         else process.env.OUTBOUND_URL_GUARD = before;
       }
+    });
+  });
+
+  describe('lookup timeout (#780)', () => {
+    const never: HostLookup = () => new Promise(() => undefined);
+
+    it('the default lookup budget is 3 s', () => {
+      expect(OUTBOUND_LOOKUP_TIMEOUT_MS).toBe(3000);
+    });
+
+    it('withLookupTimeout rejects with OutboundLookupTimeoutError once the budget is spent', async () => {
+      const bounded = withLookupTimeout(never, 20);
+      const attempt = bounded('slow.example');
+      await expect(attempt).rejects.toBeInstanceOf(OutboundLookupTimeoutError);
+      await expect(attempt).rejects.toThrow('lookup of slow.example timed out after 20 ms');
+    });
+
+    it('withLookupTimeout passes a prompt answer or error through unchanged', async () => {
+      const ok = withLookupTimeout(jest.fn().mockResolvedValue(PUBLIC), 1000);
+      await expect(ok('api.example.com')).resolves.toEqual(PUBLIC);
+      const bad = withLookupTimeout(jest.fn().mockRejectedValue(new Error('ENOTFOUND')), 1000);
+      await expect(bad('nope.example.com')).rejects.toThrow('ENOTFOUND');
+    });
+
+    it('vetOutboundHost reports a timed-out lookup as `timeout` — could not be verified — not `unresolved`', async () => {
+      const verdict = await vetOutboundHost('slow.example', withLookupTimeout(never, 20));
+      expect(verdict).toMatchObject({ ok: false, reason: 'timeout', addresses: [] });
+      if (verdict.ok) return;
+      expect(verdict.detail).toContain('slow.example could not be verified');
+      expect(verdict.detail).toContain('timed out after 20 ms');
+    });
+
+    it('guardOutboundHost: a timeout is allowed with a warning under warn and refused under reject', async () => {
+      const lookup = withLookupTimeout(never, 20);
+      const logger = { warn: jest.fn() };
+      await expect(
+        guardOutboundHost('slow.example', { subject: 's', mode: 'warn', lookup, logger }),
+      ).resolves.toMatchObject({ ok: false, reason: 'timeout' });
+      expect(String(logger.warn.mock.calls[0][0])).toMatch(
+        /could not be verified.*allowed because OUTBOUND_URL_GUARD=warn/,
+      );
+      await expect(
+        guardOutboundHost('slow.example', { subject: 's', mode: 'reject', lookup }),
+      ).rejects.toThrow(/could not be verified.*OUTBOUND_URL_GUARD=reject/);
+    });
+  });
+
+  describe('vetOutboundHosts — bulk, deduped, bounded (#780)', () => {
+    const byName: Record<string, { address: string; family: 4 | 6 }[]> = {
+      'a.example': PUBLIC,
+      'b.example': METADATA,
+    };
+
+    it('resolves each distinct hostname once and maps every input (as given) to its verdict', async () => {
+      const lookup: HostLookup = jest.fn(async (host) => byName[host] ?? []);
+      const out = await vetOutboundHosts(
+        ['a.example', 'b.example', 'A.example.', 'a.example', '10.0.0.1'],
+        { lookup },
+      );
+
+      expect(lookup).toHaveBeenCalledTimes(2);
+      expect(lookup).toHaveBeenCalledWith('a.example');
+      expect(lookup).toHaveBeenCalledWith('b.example');
+      expect(out.size).toBe(4);
+      expect(out.get('a.example')).toMatchObject({ ok: true });
+      expect(out.get('A.example.')).toBe(out.get('a.example'));
+      expect(out.get('b.example')).toMatchObject({ ok: false, reason: 'non-public' });
+      expect(out.get('10.0.0.1')).toMatchObject({ ok: false, reason: 'non-public' });
+    });
+
+    it('keeps at most `concurrency` lookups in flight', async () => {
+      let inFlight = 0;
+      let peak = 0;
+      const lookup: HostLookup = async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return PUBLIC;
+      };
+      const hosts = Array.from({ length: 6 }, (_, i) => `h${i}.example`);
+
+      const out = await vetOutboundHosts(hosts, { lookup, concurrency: 2 });
+
+      expect(peak).toBe(2);
+      expect([...out.values()].every((v) => v.ok)).toBe(true);
+    });
+
+    it('one hanging name does not hide the others — each gets its own verdict', async () => {
+      const lookup: HostLookup = withLookupTimeout(
+        async (host) => (host === 'slow.example' ? new Promise(() => undefined) : PUBLIC),
+        20,
+      );
+      const out = await vetOutboundHosts(['slow.example', 'a.example'], { lookup });
+      expect(out.get('slow.example')).toMatchObject({ ok: false, reason: 'timeout' });
+      expect(out.get('a.example')).toMatchObject({ ok: true });
+    });
+
+    it('an empty input is an empty map with no lookup', async () => {
+      const lookup: HostLookup = jest.fn();
+      await expect(vetOutboundHosts([], { lookup })).resolves.toEqual(new Map());
+      expect(lookup).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('enforceOutboundVerdict — the policy on a ready verdict (#780)', () => {
+    it('returns a passing verdict silently in either mode', () => {
+      const logger = { warn: jest.fn() };
+      for (const mode of ['warn', 'reject'] as const) {
+        expect(
+          enforceOutboundVerdict({ ok: true, addresses: PUBLIC }, { subject: 's', mode, logger }),
+        ).toEqual({ ok: true, addresses: PUBLIC });
+      }
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('warn: logs the subject and detail and returns the verdict; reject: throws naming the env var', () => {
+      const failing = {
+        ok: false as const,
+        reason: 'non-public' as const,
+        addresses: METADATA,
+        detail: 'api.example.com resolves to a non-public address (169.254.169.254)',
+      };
+      const logger = { warn: jest.fn() };
+      expect(enforceOutboundVerdict(failing, { subject: 'rule r1', mode: 'warn', logger })).toBe(
+        failing,
+      );
+      expect(String(logger.warn.mock.calls[0][0])).toBe(
+        'rule r1: api.example.com resolves to a non-public address (169.254.169.254); allowed because OUTBOUND_URL_GUARD=warn',
+      );
+      expect(() => enforceOutboundVerdict(failing, { subject: 'rule r1', mode: 'reject' })).toThrow(
+        BadRequestException,
+      );
+      expect(() => enforceOutboundVerdict(failing, { subject: 'rule r1', mode: 'reject' })).toThrow(
+        'rule r1: api.example.com resolves to a non-public address (169.254.169.254); refused by OUTBOUND_URL_GUARD=reject',
+      );
     });
   });
 

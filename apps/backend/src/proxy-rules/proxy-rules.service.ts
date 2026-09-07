@@ -26,32 +26,8 @@ import type {
 import type { ProxyRuleSet } from '../db/schema/proxy-rule-sets.schema';
 import type { RevisionTrigger } from '../db/schema/proxy-rule-set-revisions.schema';
 import { methodSignature } from './method-match';
-import {
-  guardOutboundHost,
-  isExplicitlyInternalHost,
-  outboundUrlGuardMode,
-} from '../common/outbound-url.guard';
-
-// SSRF protection - blocked hostnames
-const BLOCKED_HOSTS = [
-  'localhost',
-  '127.0.0.1',
-  '::1',
-  '0.0.0.0',
-  'metadata.google.internal',
-  '169.254.169.254', // AWS/GCP metadata
-];
-
-// SSRF protection - blocked IP patterns (private networks)
-const BLOCKED_IP_PATTERNS = [
-  /^10\./, // 10.0.0.0/8
-  /^172\.(1[6-9]|2[0-9]|3[01])\./, // 172.16.0.0/12
-  /^192\.168\./, // 192.168.0.0/16
-  /^127\./, // 127.0.0.0/8
-  /^169\.254\./, // Link-local
-  /^fc00:/i, // IPv6 unique local
-  /^fe80:/i, // IPv6 link-local
-];
+import { enforceOutboundVerdict, outboundUrlGuardMode } from '../common/outbound-url.guard';
+import { vetTargetUrl } from './target-url.guard';
 
 @Injectable()
 export class ProxyRulesService {
@@ -863,66 +839,30 @@ export class ProxyRulesService {
   }
 
   /**
-   * Validate target URL for SSRF protection.
+   * Validate target URL for SSRF protection — the UI/REST create/update door.
    *
-   * The protocol and hostname-string rules reject outright. A hostname that
-   * is not explicitly internal (localhost / 127.0.0.1 / *.svc /
+   * The check itself lives in `target-url.guard.ts` (`vetTargetUrl`, shared
+   * with rules push / import / copy since #780); this method applies the
+   * door's historical policy to its verdict. The protocol and hostname-string
+   * rules (`check: 'static'`) reject outright, as they always have. A
+   * hostname that is not explicitly internal (localhost / 127.0.0.1 / *.svc /
    * *.svc.cluster.local, which are allowed as same-pod and in-cluster
-   * targets) is then resolved and every address must be public — under
+   * targets) is resolved and every address must be public — under
    * `OUTBOUND_URL_GUARD` (#770): `warn` (default) logs and allows, so a
    * self-hoster's split-horizon target keeps working after upgrade; `reject`
    * refuses with a 400. `subject` names the rule for the log line / error.
    */
   private async validateTargetUrl(url: string, subject: string): Promise<void> {
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      throw new BadRequestException('Invalid URL format');
+    const verdict = await vetTargetUrl(url);
+    if (verdict.ok) return;
+    if (verdict.check === 'static') {
+      throw new BadRequestException(verdict.reason);
     }
-
-    const hostname = parsed.hostname.toLowerCase();
-
-    // Allow HTTPS for any URL, or HTTP for internal services (K8s services, localhost)
-    if (parsed.protocol === 'https:') {
-      // HTTPS is allowed
-    } else if (parsed.protocol === 'http:') {
-      // HTTP allowed for internal K8s services (*.svc or *.svc.cluster.local)
-      // and localhost/127.0.0.1 for same-pod sidecar communication
-      const isInternalK8s = hostname.endsWith('.svc') || hostname.endsWith('.svc.cluster.local');
-      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-      if (!isInternalK8s && !isLocalhost) {
-        throw new BadRequestException(
-          'Target URL must use HTTPS, or HTTP for internal services (*.svc, localhost)',
-        );
-      }
-    } else {
-      throw new BadRequestException('Target URL must use HTTP or HTTPS protocol');
-    }
-
-    // Check blocked hosts (skip localhost since we allow it for same-pod sidecar)
-    const isLocalhostTarget = hostname === 'localhost' || hostname === '127.0.0.1';
-    if (!isLocalhostTarget && BLOCKED_HOSTS.includes(hostname)) {
-      throw new BadRequestException('Target URL cannot point to internal services');
-    }
-
-    // Check IP patterns (skip localhost since we allow it for same-pod sidecar)
-    if (!isLocalhostTarget) {
-      for (const pattern of BLOCKED_IP_PATTERNS) {
-        if (pattern.test(hostname)) {
-          throw new BadRequestException('Target URL cannot point to internal IP ranges');
-        }
-      }
-    }
-
-    // Resolve anything not declared internal and vet every address it has. A
-    // public name that resolves to 169.254.169.254 passes every check above.
-    if (!isExplicitlyInternalHost(hostname)) {
-      await guardOutboundHost(hostname, {
-        subject: `${subject}: target ${url}`,
-        logger: this.logger,
-      });
-    }
+    // A public name that resolves to 169.254.169.254 passes every static rule.
+    enforceOutboundVerdict(verdict.verdict, {
+      subject: `${subject}: target ${url}`,
+      logger: this.logger,
+    });
   }
 
   /**

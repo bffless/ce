@@ -28,6 +28,7 @@ import {
   ProxyRuleSetRevisionsService,
   computeRevisionHash,
 } from './proxy-rule-set-revisions.service';
+import { guardRuleTargets, logRuleTargetWarnings } from './target-url.guard';
 import {
   CreateProxyRuleSetDto,
   UpdateProxyRuleSetDto,
@@ -516,6 +517,11 @@ export class ProxyRuleSetsService {
     // Get the rules directly from database (with full schema type)
     const existingRules = await this.proxyRulesService.getRulesByRuleSetId(id);
 
+    // Outbound target guard (#780): the source rules were written through
+    // whichever door accepted them; the copy is a fresh write and is vetted
+    // like one, before the set row is inserted.
+    const targetWarnings = await guardRuleTargets(existingRules);
+
     // Generate a unique name for the copy
     let copyName = `${existingRuleSet.name} (Copy)`;
     let copyIndex = 1;
@@ -564,6 +570,8 @@ export class ProxyRuleSetsService {
     this.logger.log(
       `Copied proxy rule set ${id} to ${newRuleSet.id} with ${existingRules.length} rules`,
     );
+    // The copy response has no warnings channel; the log is the surface.
+    logRuleTargetWarnings(this.logger, `Rule set "${copyName}" (${newRuleSet.id})`, targetWarnings);
 
     // Read the rules back decrypted: both the revision snapshot and the API
     // response carry plaintext header values, not the stored ciphertext.
@@ -590,9 +598,12 @@ export class ProxyRuleSetsService {
    * Mirrors copy() — rules are inserted directly rather than going through
    * ProxyRulesService.create(), so there is no per-rule nginx regeneration
    * (a freshly imported set is not yet attached to any alias) and no
-   * email-service / SSRF re-validation beyond the DTO validation already
-   * performed at the controller boundary. Header `add` values are encrypted
-   * before storage so they round-trip correctly with the rest of the system.
+   * email-service re-validation beyond the DTO validation already performed
+   * at the controller boundary. External targets ARE vetted under
+   * `OUTBOUND_URL_GUARD` (#780, `guardRuleTargets`) before anything is
+   * written: `warn` logs one line per failing rule, `reject` is a 400 with
+   * no rows. Header `add` values are encrypted before storage so they
+   * round-trip correctly with the rest of the system.
    */
   async importRuleSet(
     projectId: string,
@@ -615,6 +626,10 @@ export class ProxyRuleSetsService {
       'contributor',
       apiKeyProjectId,
     );
+
+    // Outbound target guard (#780) — before schema creation below, which is
+    // the first write: under `reject` nothing at all must land.
+    const targetWarnings = await guardRuleTargets(dto.rules ?? []);
 
     // Resolve bundled schema dependencies to target-project schema ids.
     // Pipeline rules carry the original (source) schema ids; we build a map and
@@ -717,6 +732,8 @@ export class ProxyRuleSetsService {
     this.logger.log(
       `Imported proxy rule set "${name}" (${rules.length} rules) for project ${projectId}`,
     );
+    // The import response has no warnings channel; the log is the surface.
+    logRuleTargetWarnings(this.logger, `Rule set "${name}" (${newRuleSet.id})`, targetWarnings);
 
     const insertedRules = await this.proxyRulesService.getRulesByRuleSetId(newRuleSet.id);
 
@@ -1250,6 +1267,15 @@ export class ProxyRuleSetsService {
       throw new BadRequestException((error as Error).message);
     }
 
+    // Outbound target guard (#780): every incoming rule with an external
+    // target, under OUTBOUND_URL_GUARD — one warning line per failing rule
+    // (default `warn`; the CLI prints `warnings[]`), or one 400 listing them
+    // all under `reject`. Runs HERE, before schema resolution, for the same
+    // reason as the duplicate check above: `reject` must write nothing, and
+    // schema creation happens outside the rule transaction. `dryRun` reports
+    // the same result.
+    const targetWarnings = await guardRuleTargets(dtoRules);
+
     const { idMap, resolutions, warnings } = await this.resolveSchemasByName(
       projectId,
       dto.schemas?.map((schema) => ({
@@ -1288,6 +1314,7 @@ export class ProxyRuleSetsService {
         apiKeyProjectId,
       )),
     );
+    warnings.push(...targetWarnings);
 
     const existing = await this.findByName(projectId, name);
     const setCreated = !existing;
