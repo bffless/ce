@@ -47,6 +47,7 @@ import {
   resolveProjectDefaultRuleSetIds as resolveProjectDefaultRuleSetIdsShared,
   resolveRuleSetIdsForAlias as resolveRuleSetIdsForAliasShared,
 } from './rule-resolution';
+import { servesProtectedResourceDocument } from '../pipelines/mcp/protected-resource';
 
 interface ParsedPublicPath {
   owner: string;
@@ -594,7 +595,10 @@ export class ProxyMiddleware implements NestMiddleware {
 
     // A rule that opted out of the gate serves pre-credential callers (OAuth
     // discovery under /.well-known, a webhook receiver). Its own validators still run.
-    if (matchedRule?.bypassVisibility) {
+    // A rule whose pipeline serves the RFC 9728 document through the dedicated
+    // `oauth_protected_resource` step is such a caller's by definition, so the
+    // handler implies the opt-out — an author never sets `bypassVisibility` for it (#760).
+    if (matchedRule?.bypassVisibility || servesProtectedResourceDocument(matchedRule)) {
       return 'allowed';
     }
 
@@ -648,7 +652,8 @@ export class ProxyMiddleware implements NestMiddleware {
 
       if (this.isApiRequest(req)) {
         // RFC 9728 §5.1: tell a bearer client where the resource's OAuth metadata is
-        // (an app-shipped /.well-known rule), so a connector can start its flow.
+        // (a /.well-known rule — an `oauth_protected_resource` step or an app-shipped
+        // document), so a connector can start its flow.
         this.setResourceMetadataHint(req, res);
         // Check if token was expired (set by AuthMiddleware)
         // If so, the response was already sent by AuthMiddleware
@@ -712,8 +717,10 @@ export class ProxyMiddleware implements NestMiddleware {
 
   /**
    * `WWW-Authenticate: Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource"`
-   * (RFC 9728 §5.1) on a 401 that reached CE through a domain host. The document itself is
-   * the app's to ship (a rule served despite visibility); CE only points at where it would be.
+   * (RFC 9728 §5.1) on a 401 that reached CE through a domain host. The document is a
+   * rule of the alias, served despite visibility: either the `oauth_protected_resource`
+   * step, which derives it from the `mcp_handler` and CE's own issuer (#760), or an
+   * app-shipped function. CE points at where it is; whether it exists is the rule set's.
    */
   private setResourceMetadataHint(req: Request, res: Response): void {
     const forwardedHost = req.headers['x-forwarded-host'];

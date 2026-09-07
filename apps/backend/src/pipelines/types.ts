@@ -97,7 +97,8 @@ export type HandlerType =
   | 'delay'
   | 'ffmpeg_handler'
   | 'remote_request'
-  | 'mcp_handler';
+  | 'mcp_handler'
+  | 'oauth_protected_resource';
 
 /**
  * Pipeline step definition for execution.

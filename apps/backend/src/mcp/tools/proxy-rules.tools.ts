@@ -34,6 +34,7 @@ export const pipelineStepSchema = z.object({
       'http_request',
       'remote_request',
       'mcp_handler',
+      'oauth_protected_resource',
       'stripe_checkout',
       'stripe_webhook',
       'signed_url',

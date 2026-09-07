@@ -29,3 +29,4 @@ export * from './delay.handler';
 export * from './ffmpeg.handler';
 export * from './remote-request.handler';
 export * from './mcp.handler';
+export * from './oauth-protected-resource.handler';

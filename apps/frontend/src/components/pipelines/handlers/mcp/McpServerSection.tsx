@@ -6,15 +6,23 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { StringListInput } from './StringListInput';
 import { PROTOCOL_VERSION_DEFAULTS, type McpConfig } from './model';
+import { PROTECTED_RESOURCE_PATH, type DiscoverySummary } from './discovery';
 
 interface McpServerSectionProps {
   config: McpConfig;
   onChange: (patch: Partial<McpConfig>) => void;
   serverInfoError?: string;
+  /** Where the RFC 9728 discovery document comes from, read off the rule set; omitted when unknown. */
+  discovery?: DiscoverySummary;
 }
 
-/** `serverInfo`, `instructions` and (behind Advanced) `protocolVersions`. */
-export function McpServerSection({ config, onChange, serverInfoError }: McpServerSectionProps) {
+/** `serverInfo`, `instructions`, where OAuth discovery comes from, and (behind Advanced) `protocolVersions`. */
+export function McpServerSection({
+  config,
+  onChange,
+  serverInfoError,
+  discovery,
+}: McpServerSectionProps) {
   const id = useId();
   const [advanced, setAdvanced] = useState(config.protocolVersions.length > 0);
 
@@ -75,6 +83,8 @@ export function McpServerSection({ config, onChange, serverInfoError }: McpServe
         </p>
       </div>
 
+      {discovery && <DiscoveryNote discovery={discovery} />}
+
       <div>
         <Button
           type="button"
@@ -103,6 +113,72 @@ export function McpServerSection({ config, onChange, serverInfoError }: McpServe
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The OAuth discovery contract, taught where the server is edited: a client
+ * reads `/.well-known/oauth-protected-resource` before it has a credential, and
+ * `scopes_supported` there is what it may be granted. Says which rule answers
+ * and what the list will be — declared, or derived from the tools' siblings.
+ */
+function DiscoveryNote({ discovery }: { discovery: DiscoverySummary }) {
+  const scopesLine = (scopes: { mode: 'declared' | 'derived'; values: string[] }) => (
+    <>
+      <code>scopes_supported</code> — {scopes.mode}:{' '}
+      {scopes.values.length ? (
+        scopes.values.map((s) => (
+          <code key={s} className="mr-1">
+            {s}
+          </code>
+        ))
+      ) : (
+        <span>none</span>
+      )}
+      {scopes.mode === 'derived' && (
+        <>
+          {' '}
+          (the union of <code>requiredScopes</code> on the tools&apos; sibling rules; declare{' '}
+          <code>scopes</code> on that step to publish a different list)
+        </>
+      )}
+    </>
+  );
+
+  return (
+    <div
+      className="rounded-md border bg-muted/30 p-3 space-y-1 text-xs text-muted-foreground"
+      data-testid="mcp-discovery"
+    >
+      <p className="font-medium">OAuth discovery (RFC 9728)</p>
+      {discovery.kind === 'handler' && (
+        <>
+          <p>
+            Served by the <code>oauth_protected_resource</code> step on{' '}
+            <code>{discovery.rulePath}</code>; <code>authorization_servers</code> is this
+            instance&apos;s issuer.
+          </p>
+          <p>{scopesLine(discovery.scopes)}</p>
+        </>
+      )}
+      {discovery.kind === 'custom' && (
+        <p>
+          Served by a custom rule at <code>{discovery.rulePath}</code>; its{' '}
+          <code>scopes_supported</code> is whatever that rule emits. Replace it with an{' '}
+          <code>oauth_protected_resource</code> step to derive the list from this server&apos;s
+          tools and take <code>authorization_servers</code> from this instance.
+        </p>
+      )}
+      {discovery.kind === 'none' && (
+        <p>
+          No <code>{PROTECTED_RESOURCE_PATH}</code> rule in this set. An OAuth client (claude.ai,
+          Claude Code) cannot start without one: add a GET rule at{' '}
+          <code>{PROTECTED_RESOURCE_PATH}*</code> with an <code>oauth_protected_resource</code> step
+          whose <code>resource</code> is this rule&apos;s path. Another set attached to the same
+          alias may already carry it.
+        </p>
+      )}
     </div>
   );
 }

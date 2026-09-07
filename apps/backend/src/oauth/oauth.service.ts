@@ -1,4 +1,11 @@
-import { ForbiddenException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  forwardRef,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import * as jwt from 'jsonwebtoken';
@@ -16,6 +23,12 @@ import {
 import { hashToken } from '../auth/app-token.util';
 import { AppTokensService } from '../app-tokens/app-tokens.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { RuleInvokerService } from '../proxy-rules/rule-invoker.service';
+import {
+  PROTECTED_RESOURCE_PATH,
+  findProtectedResourceConfig,
+  scopesSupportedFor,
+} from '../pipelines/mcp/protected-resource';
 import { SCOPE_PATTERN } from '../pipelines/types';
 import { OAuthError } from './oauth.errors';
 import { isValidVerifier, verifyS256 } from './pkce.util';
@@ -61,6 +74,8 @@ export class OAuthService {
     private readonly config: ConfigService,
     private readonly appTokens: AppTokensService,
     private readonly permissions: PermissionsService,
+    @Inject(forwardRef(() => RuleInvokerService))
+    private readonly rules: RuleInvokerService,
   ) {}
 
   private get jwtSecret(): string {
@@ -547,8 +562,23 @@ export class OAuthService {
       .limit(1);
     if (!project) throw new OAuthError('invalid_target', `no deployment answers ${host}`);
     const alias = mapping.alias || 'production';
+    const resolved = {
+      projectId: project.id,
+      projectSlug: `${project.owner}/${project.name}`,
+      projectName: project.displayName || project.name,
+    };
+
+    // When the alias serves its document through the `oauth_protected_resource`
+    // step, read that step's config directly — the same derivation the edge
+    // would run — instead of fetching a document this process would itself
+    // produce. The fetch below stays for app-shipped (function_handler) documents.
+    const direct = await this.protectedResourceConfigOf(project.id, alias, url.pathname);
+    if (direct) {
+      return { ...resolved, scopesSupported: direct };
+    }
+
     const base = `${(mapping.path || '').replace(/\/+$/, '')}`;
-    const prmPath = '/.well-known/oauth-protected-resource';
+    const prmPath = PROTECTED_RESOURCE_PATH;
     const inProcess = `http://localhost:3000/public/${project.owner}/${project.name}/alias/${alias}${base}${prmPath}`;
     let scopesSupported: string[] = [];
     try {
@@ -568,12 +598,28 @@ export class OAuthService {
       this.logger.debug(`protected-resource document for ${host}: ${String(error)}`);
       throw new OAuthError('invalid_target', `${host} publishes no protected-resource document`);
     }
-    return {
-      projectId: project.id,
-      projectSlug: `${project.owner}/${project.name}`,
-      projectName: project.displayName || project.name,
-      scopesSupported,
-    };
+    return { ...resolved, scopesSupported };
+  }
+
+  /**
+   * `scopes_supported` straight from the alias's `oauth_protected_resource` step
+   * (declared, or derived from the `mcp_handler` at the resource's path), or
+   * undefined when the alias's matched `/.well-known` rule is not that handler.
+   * Never throws: a resolution failure falls back to the fetch.
+   */
+  private async protectedResourceConfigOf(
+    projectId: string,
+    alias: string,
+    resourcePath: string,
+  ): Promise<string[] | undefined> {
+    try {
+      const rules = await this.rules.effectiveRules(projectId, alias);
+      const config = findProtectedResourceConfig(rules, resourcePath);
+      return config ? scopesSupportedFor(config, rules) : undefined;
+    } catch (error) {
+      this.logger.debug(`protected-resource step for ${alias}: ${String(error)}`);
+      return undefined;
+    }
   }
 }
 

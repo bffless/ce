@@ -113,6 +113,7 @@ const HANDLER_GROUPS: { label: string; types: HandlerType[] }[] = [
       'xml_feed_parse',
       'delay',
       'mcp_handler',
+      'oauth_protected_resource',
     ],
   },
 ];

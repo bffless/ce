@@ -50,8 +50,8 @@ CE's built-in OAuth 2.1 server on the admin host — the issuer is `https://<ADM
 _Avoid_: "SuperTokens OAuth", "SSO" (that is the member's own login, the other direction)
 
 **Protected-resource document**:
-An app-shipped `/.well-known/oauth-protected-resource` rule (served despite visibility — Bypass visibility) naming the resource, the Authorization server and the app's scopes (RFC 9728). How a client finds the server from the app; CE points at it in `WWW-Authenticate` on API 401s.
-_Avoid_: "discovery endpoint" (CE has none for apps)
+The `/.well-known/oauth-protected-resource` rule of an alias (served despite visibility) naming the resource, the Authorization server and the app's scopes (RFC 9728). How a client finds the server from the app; CE points at it in `WWW-Authenticate` on API 401s. Written either as the `oauth_protected_resource` step — which derives every URL from the request and CE's own issuer, and `scopes_supported` from the MCP handler's Sibling rules unless declared, and implies Bypass visibility (#760) — or, in older apps, as a hand-written `function_handler` + `response_handler` pair.
+_Avoid_: "discovery endpoint" (it is a rule of the alias, not a CE endpoint)
 
 **Owner session**:
 A browser session authenticated as the project owner, which login-gated SPA routes accept. The thing an automated client holding a Project API key currently cannot obtain.

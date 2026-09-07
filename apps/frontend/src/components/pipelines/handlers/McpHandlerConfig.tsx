@@ -9,6 +9,8 @@ import { McpServerSection } from './mcp/McpServerSection';
 import { McpToolList } from './mcp/McpToolList';
 import { McpResourcesSection } from './mcp/McpResourcesSection';
 import { normalize, serialize, validate, type McpConfig } from './mcp/model';
+import { discoveryFor, type DiscoveryRule } from './mcp/discovery';
+import { useGetRuleSetRulesQuery } from '@/services/proxyRulesApi';
 
 interface Props {
   config: Record<string, unknown>;
@@ -40,6 +42,20 @@ export function McpHandlerConfig({ config, onChange, ruleSetId, ruleId }: Props)
   const serialized = useMemo(() => serialize(model), [model]);
   const problems = useMemo(() => validate(model), [model]);
   const summary = useMemo(() => summarizeMcpConfig(serialized), [serialized]);
+
+  // Where OAuth discovery for this server comes from, read off the set the way the
+  // backend reads it — live against the edited tools, so a scope change shows at once.
+  const { data: siblings } = useGetRuleSetRulesQuery(setId ?? '', { skip: !setId });
+  const discovery = useMemo(
+    () =>
+      siblings
+        ? discoveryFor(siblings.rules as unknown as DiscoveryRule[], {
+            ruleId: excludeRuleId,
+            tools: model.tools,
+          })
+        : undefined,
+    [siblings, excludeRuleId, model.tools],
+  );
 
   const emit = (next: McpConfig) => onChange(serialize(next));
   const patch = (p: Partial<McpConfig>) => emit({ ...model, ...p });
@@ -124,7 +140,12 @@ export function McpHandlerConfig({ config, onChange, ruleSetId, ruleId }: Props)
         </TabsList>
 
         <TabsContent value="server" className="pt-2">
-          <McpServerSection config={model} onChange={patch} serverInfoError={serverInfoError} />
+          <McpServerSection
+            config={model}
+            onChange={patch}
+            serverInfoError={serverInfoError}
+            discovery={discovery}
+          />
         </TabsContent>
 
         <TabsContent value="tools" className="pt-2">

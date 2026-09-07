@@ -56,6 +56,7 @@ import {
   DelayHandler,
   FfmpegHandler,
   McpHandler,
+  OAuthProtectedResourceHandler,
 } from './handlers';
 import { FfmpegCapabilityService } from './ffmpeg/ffmpeg-capability.service';
 import { FfmpegRunnerService } from './ffmpeg/ffmpeg-runner.service';
@@ -68,6 +69,7 @@ import { FfmpegExecutorSettingsController } from './ffmpeg/ffmpeg-executor-setti
 import { FFMPEG_CONFIG_PROVIDERS } from './ffmpeg/executor/ffmpeg-config.providers';
 import { FeedParserService } from './feed-parser.service';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { OAuthModule } from '../oauth/oauth.module';
 // Embeddings service
 import { PipelineEmbeddingsService } from './pipeline-embeddings.service';
 // Execution logging
@@ -111,6 +113,10 @@ import {
     // Server-side video ops (Task 5/6): REMOTE_CONNECTIONS is the lazy port the
     // ffmpeg remote executor resolves connections through.
     RemoteConnectionsModule,
+    // forwardRef: the oauth_protected_resource handler names CE's own issuer
+    // (OAuthService.issuer()); OAuthModule reaches back through ProxyRulesModule
+    // → PipelinesModule for the same rule resolution, so both edges defer.
+    forwardRef(() => OAuthModule),
   ],
   controllers: [
     PipelineSchemasController,
@@ -180,6 +186,7 @@ import {
     DelayHandler,
     FfmpegHandler,
     McpHandler,
+    OAuthProtectedResourceHandler,
     // Server-side video ops (Task 2/4/5) — consumed by FfmpegHandler, not otherwise registered
     FfmpegCapabilityService,
     FfmpegRunnerService,

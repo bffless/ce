@@ -31,6 +31,7 @@ import { DataUpsertManyConfig } from './DataUpsertManyConfig';
 import { DelayHandlerConfig } from './DelayHandlerConfig';
 import { FfmpegHandlerConfig } from './FfmpegHandlerConfig';
 import { McpHandlerConfig } from './McpHandlerConfig';
+import { OAuthProtectedResourceConfig } from './OAuthProtectedResourceConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -433,6 +434,10 @@ export function HandlerConfigWrapper({
       // No expressions panel: the config is a declaration, not a step over prior outputs.
       return <McpHandlerConfig config={config} onChange={handleChange} />;
 
+    case 'oauth_protected_resource':
+      // A declaration too: the document is derived from the request and the rule set.
+      return <OAuthProtectedResourceConfig config={config} onChange={handleChange} />;
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -468,6 +473,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     http_request: 'HTTP Request',
     remote_request: 'Remote Request',
     mcp_handler: 'MCP Server',
+    oauth_protected_resource: 'OAuth Discovery (MCP)',
     stripe_checkout: 'Stripe Checkout',
     stripe_webhook: 'Stripe Webhook',
     signed_url: 'Signed URL',
@@ -511,6 +517,8 @@ export function getHandlerDescription(type: HandlerType): string {
       'Call an admin-configured remote connection (Cloud Run etc.) with the platform identity',
     mcp_handler:
       'Answer as a stateless MCP server: tools and ui:// resources mapped to sibling rules of this alias, run as the caller',
+    oauth_protected_resource:
+      'Serve the RFC 9728 protected-resource document for an MCP server on this host (served regardless of visibility)',
     stripe_checkout: 'Create a Stripe Checkout Session and return the payment URL',
     stripe_webhook: 'Verify Stripe webhook signature and parse the event',
     signed_url: 'Generate a time-limited presigned URL for a file in storage',

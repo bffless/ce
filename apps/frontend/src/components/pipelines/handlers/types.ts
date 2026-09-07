@@ -414,7 +414,8 @@ export type HandlerConfig =
   | DataUpsertManyHandlerConfig
   | DelayHandlerConfig
   | FfmpegHandlerConfig
-  | McpHandlerConfig;
+  | McpHandlerConfig
+  | OAuthProtectedResourceHandlerConfig;
 
 export interface SignedUrlHandlerConfig extends BaseHandlerConfig {
   /** Storage key / path (supports expressions, e.g. "steps.upload.storage_path") */
@@ -644,4 +645,20 @@ export interface McpHandlerConfig extends BaseHandlerConfig {
     list?: { rule: { path: string; method?: 'GET' } };
     csp?: { connectDomains?: string[]; resourceDomains?: string[] };
   };
+}
+
+/**
+ * `oauth_protected_resource` — the RFC 9728 discovery document for the
+ * `mcp_handler` at `resource`. Every URL comes from the request and the
+ * instance; a rule carrying it is served regardless of deployment visibility.
+ */
+export interface OAuthProtectedResourceHandlerConfig extends BaseHandlerConfig {
+  /** The MCP endpoint's path on this host, e.g. `/api/mcp`. */
+  resource: string;
+  /** `scopes_supported` verbatim; omitted = derived from the MCP rule's sibling `requiredScopes`. */
+  scopes?: string[];
+  /** `resource_name`; defaults to the MCP server's `serverInfo.name`. */
+  resourceName?: string;
+  /** `resource_documentation`, a URL. */
+  resourceDocumentation?: string;
 }
