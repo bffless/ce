@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.53](https://github.com/bffless/ce/compare/v0.4.52...v0.4.53) (2026-09-07)
+
+
+### Added
+
+* **backend:** shared SSRF guard for proxy-rule targets and app bundle URLs (warn by default) ([#772](https://github.com/bffless/ce/issues/772)) ([2a00a7b](https://github.com/bffless/ce/commit/2a00a7bc763f264399105a910d35e06b36acb8d8)), closes [#770](https://github.com/bffless/ce/issues/770)
+* **oauth:** accept Client ID Metadata Document URLs as client_id (CIMD) ([#764](https://github.com/bffless/ce/issues/764)) ([432247a](https://github.com/bffless/ce/commit/432247ac7506d5585297c36525748224a7e738db))
+* **oauth:** rate-limit and dedupe Client ID Metadata Document fetches ([#771](https://github.com/bffless/ce/issues/771)) ([a49c424](https://github.com/bffless/ce/commit/a49c4243909b6a9e604171617aa38be321dd5e1d)), closes [#768](https://github.com/bffless/ce/issues/768)
+
+
+### Fixed
+
+* **oauth:** reject a non-uuid, non-URL client_id on authorize as invalid_client ([#769](https://github.com/bffless/ce/issues/769)) ([35a560e](https://github.com/bffless/ce/commit/35a560efc3682462dae2b954ec79112a78917b8a)), closes [#767](https://github.com/bffless/ce/issues/767)
+* **pipelines:** persist execution logs for in-process sibling invocations ([#763](https://github.com/bffless/ce/issues/763)) ([88bf00d](https://github.com/bffless/ce/commit/88bf00dcccc630a7a92c1a6e5397e72bd1175d43)), closes [#738](https://github.com/bffless/ce/issues/738)
+
 ## [0.4.52](https://github.com/bffless/ce/compare/v0.4.51...v0.4.52) (2026-09-07)
 
 ### Added
