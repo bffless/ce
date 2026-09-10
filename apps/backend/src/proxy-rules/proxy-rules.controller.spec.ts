@@ -23,7 +23,10 @@ describe('ProxyRulesController', () => {
     getCountByRuleId: jest.Mock;
     deleteByRuleId: jest.Mock;
   };
-  let mockPermissionsService: { requireProjectAccess: jest.Mock };
+  let mockPermissionsService: {
+    requireProjectAccess: jest.Mock;
+    getEffectiveProjectRole: jest.Mock;
+  };
 
   const mockRuleSet = { id: 'rule-set-1', projectId: 'project-1' };
 
@@ -95,7 +98,10 @@ describe('ProxyRulesController', () => {
       deleteByRuleId: jest.fn().mockResolvedValue(undefined),
     };
 
-    mockPermissionsService = { requireProjectAccess: jest.fn().mockResolvedValue(undefined) };
+    mockPermissionsService = {
+      requireProjectAccess: jest.fn().mockResolvedValue(undefined),
+      getEffectiveProjectRole: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProxyRulesController],
@@ -416,6 +422,73 @@ describe('ProxyRulesController', () => {
         expect.objectContaining({ id: 'user-1', groups: [] }),
         expect.anything(),
       );
+    });
+
+    it('passes mockUser.projectRole through to executePipelineWithDebug', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
+
+      await controller.testPipelineRule(
+        'rule-1',
+        {
+          mockUser: {
+            id: 'mock-user-1',
+            email: 'mock@example.com',
+            role: 'user',
+            projectRole: 'contributor',
+          },
+        },
+        mockUser,
+        { file: undefined } as any,
+      );
+
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ id: 'mock-user-1', projectRole: 'contributor' }),
+        expect.anything(),
+      );
+    });
+
+    it("resolves the real caller's projectRole (contributor) for the test run", async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
+      mockPermissionsService.getEffectiveProjectRole.mockResolvedValue('contributor');
+
+      await controller.testPipelineRule('rule-1', {}, mockUser, { file: undefined } as any);
+
+      expect(mockPermissionsService.getEffectiveProjectRole).toHaveBeenCalledWith(
+        mockUser,
+        'project-1',
+      );
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ id: 'user-1', projectRole: 'contributor' }),
+        expect.anything(),
+      );
+    });
+
+    it('a global admin tests as owner', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
+      mockPermissionsService.getEffectiveProjectRole.mockResolvedValue('owner');
+
+      await controller.testPipelineRule('rule-1', {}, mockUser, { file: undefined } as any);
+
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ id: 'user-1', projectRole: 'owner' }),
+        expect.anything(),
+      );
+    });
+
+    it('degrades to no projectRole when the lookup fails', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
+      mockPermissionsService.getEffectiveProjectRole.mockResolvedValue(undefined);
+
+      await controller.testPipelineRule('rule-1', {}, mockUser, { file: undefined } as any);
+
+      const testUserArg = mockPipelineExecutionService.executePipelineWithDebug.mock.calls[0][2];
+      expect(testUserArg).not.toHaveProperty('projectRole');
     });
 
     // "Test" must load skills from the same deployment production would, or a

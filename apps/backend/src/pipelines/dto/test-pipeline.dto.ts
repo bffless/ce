@@ -46,6 +46,14 @@ export class MockUserDto {
   @IsArray()
   @IsString({ each: true })
   groups?: string[];
+
+  @ApiPropertyOptional({
+    description: "Project role to simulate (the caller's role on this project)",
+    example: 'contributor',
+  })
+  @IsOptional()
+  @IsString()
+  projectRole?: string;
 }
 
 export class TestPipelineDto {

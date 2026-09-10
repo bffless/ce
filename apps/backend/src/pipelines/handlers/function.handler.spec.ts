@@ -114,3 +114,32 @@ describe('FunctionHandler.execute — user.credential / user.scopes (app tokens)
     expect(data.user).not.toHaveProperty('scopes');
   });
 });
+
+describe('FunctionHandler.execute — user.projectRole (spec 11)', () => {
+  it('exposes the project role', async () => {
+    const { handler, runnerMock } = createHandler();
+    runnerMock.run.mockResolvedValue({ success: true, output: {}, executionTime: 1, logs: [] });
+    const context = makeContext({
+      user: { id: 'u1', role: 'user', projectRole: 'admin' },
+    });
+
+    await handler.execute(context, makeStep({ code: 'export default () => ({})' }));
+
+    expect(runnerMock.run).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ user: expect.objectContaining({ projectRole: 'admin' }) }),
+      expect.anything(),
+    );
+  });
+
+  it('adds nothing without one', async () => {
+    const { handler, runnerMock } = createHandler();
+    runnerMock.run.mockResolvedValue({ success: true, output: {}, executionTime: 1, logs: [] });
+    const context = makeContext({ user: { id: 'u1', role: 'user' } });
+
+    await handler.execute(context, makeStep({ code: 'export default () => ({})' }));
+
+    const data = runnerMock.run.mock.calls[0][1] as { user: Record<string, unknown> };
+    expect(data.user).not.toHaveProperty('projectRole');
+  });
+});

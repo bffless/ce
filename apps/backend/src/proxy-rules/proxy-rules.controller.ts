@@ -37,7 +37,7 @@ import { PipelineUser } from '../pipelines/execution/pipeline-context.interface'
 import { DeploymentsService } from '../deployments/deployments.service';
 import { ProjectsService } from '../projects/projects.service';
 import { UserGroupsService } from '../user-groups/user-groups.service';
-import { PermissionsService } from '../permissions/permissions.service';
+import { PermissionsService, ProjectRole } from '../permissions/permissions.service';
 
 /**
  * Controller for individual proxy rule operations.
@@ -314,11 +314,17 @@ export class ProxyRulesController {
           email: dto.mockUser.email,
           role: dto.mockUser.role,
           groups: dto.mockUser.groups,
+          ...(dto.mockUser.projectRole
+            ? { projectRole: dto.mockUser.projectRole as ProjectRole }
+            : {}),
         };
       } else {
-        // Enrich with the real user's group memberships so pipeline conditions
-        // gated on user.groups can be exercised from the test endpoint. Group
-        // lookup must never take the test down: on failure, degrade to "no groups".
+        // Enrich with the real user's group memberships and their role on this
+        // rule set's project, so pipeline conditions gated on user.groups or
+        // user.projectRole can be exercised from the test endpoint the same way
+        // they would in production. Neither lookup must ever take the test down:
+        // group lookup degrades to "no groups", project role to "absent" (see
+        // PermissionsService.getEffectiveProjectRole).
         let groups: string[] = [];
         try {
           groups = await this.userGroupsService.getGroupIdsForUser(user.id);
@@ -326,11 +332,16 @@ export class ProxyRulesController {
           this.logger.warn(`Group membership lookup failed for ${user.id}: ${error}`);
           groups = [];
         }
+        const projectRole = await this.permissionsService.getEffectiveProjectRole(
+          user,
+          ruleSet.projectId,
+        );
         testUser = {
           id: user.id,
           email: user.email,
           role: user.role,
           groups,
+          ...(projectRole ? { projectRole } : {}),
         };
       }
     }
