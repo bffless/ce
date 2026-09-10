@@ -1111,19 +1111,20 @@ export class ProxyMiddleware implements NestMiddleware {
       // Extract user from session if available (optional - don't fail if not authenticated)
       user = await this.getOptionalUser(req, res);
 
-      // Enrich with group memberships for the sandboxed pipeline context. Group
-      // lookup must never take the request down: on failure, degrade to "no groups".
+      // Enrich with group memberships and the caller's role on the PIPELINE's
+      // project for the sandboxed pipeline context. Neither lookup must ever
+      // take the request down: group lookup degrades to "no groups", project
+      // role degrades to "absent" (see PermissionsService.getEffectiveProjectRole).
       let pipelineUser: PipelineUser | undefined = user;
       if (user) {
+        let groups: string[] = [];
         try {
-          pipelineUser = {
-            ...user,
-            groups: await this.userGroupsService.getGroupIdsForUser(user.id),
-          };
+          groups = await this.userGroupsService.getGroupIdsForUser(user.id);
         } catch (error) {
           this.logger.warn(`Group membership lookup failed for ${user.id}: ${error}`);
-          pipelineUser = { ...user, groups: [] };
         }
+        const projectRole = await this.permissionsService.getEffectiveProjectRole(user, projectId);
+        pipelineUser = { ...user, groups, ...(projectRole ? { projectRole } : {}) };
       }
 
       // Execute the pipeline with deployment context for skills access

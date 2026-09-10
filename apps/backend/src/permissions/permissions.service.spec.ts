@@ -898,4 +898,65 @@ describe('PermissionsService', () => {
       expect(m.ownerEmail).toBeNull();
     });
   });
+
+  describe('getEffectiveProjectRole', () => {
+    it('returns the direct project role for a global user', async () => {
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest
+          .fn()
+          .mockResolvedValue([{ role: 'contributor', userId: 'u1', projectId: mockProjectId }]),
+      });
+
+      const result = await service.getEffectiveProjectRole(
+        { id: 'u1', role: 'user' },
+        mockProjectId,
+      );
+
+      expect(result).toBe('contributor');
+    });
+
+    it('treats a global admin as owner on every project without querying the db', async () => {
+      const result = await service.getEffectiveProjectRole(
+        { id: 'u1', role: 'admin' },
+        mockProjectId,
+      );
+
+      expect(result).toBe('owner');
+      expect(db.select).not.toHaveBeenCalled();
+    });
+
+    it('returns undefined when the user has no role on the project', async () => {
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([]),
+      });
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([]),
+      });
+
+      const result = await service.getEffectiveProjectRole(
+        { id: 'u1', role: 'user' },
+        mockProjectId,
+      );
+
+      expect(result).toBeUndefined();
+    });
+
+    it('returns undefined (never throws) when the lookup fails', async () => {
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockRejectedValue(new Error('connection lost')),
+      });
+
+      const result = await service.getEffectiveProjectRole({ id: 'u1' }, mockProjectId);
+
+      expect(result).toBeUndefined();
+    });
+  });
 });

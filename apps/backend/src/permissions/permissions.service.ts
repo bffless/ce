@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { eq, and, sql, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
@@ -85,6 +85,29 @@ function pickPrimaryUrl(rows: DomainMappingRow[]): string | null {
 
 @Injectable()
 export class PermissionsService {
+  private readonly logger = new Logger(PermissionsService.name);
+
+  /**
+   * The role `user` effectively holds on `projectId`: a global `admin` is `owner` on every
+   * project (the rule ProjectPermissionGuard applies), otherwise the highest of the direct and
+   * group rows (`getUserProjectRole`). Never throws — `undefined` on no role or on a failed lookup.
+   */
+  async getEffectiveProjectRole(
+    user: { id: string; role?: string },
+    projectId: string,
+  ): Promise<ProjectRole | undefined> {
+    // Global admins act as project owners on every project (project-permission.guard.ts).
+    // The API-key paths never carry `admin` (pinned to `user`, or no role at all), so a
+    // leaked key cannot widen through this line.
+    if (user.role === 'admin') return 'owner';
+    try {
+      return (await this.getUserProjectRole(user.id, projectId)) ?? undefined;
+    } catch (error) {
+      this.logger.warn(`Project role lookup failed for ${user.id} on ${projectId}: ${error}`);
+      return undefined;
+    }
+  }
+
   /**
    * Get user's effective role on a project
    * Checks direct user permission first, then group permissions
