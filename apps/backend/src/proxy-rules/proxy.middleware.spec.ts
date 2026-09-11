@@ -951,6 +951,32 @@ describe('ProxyMiddleware', () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
+    it('fences a wrong-project token even on an auth-proxy rule (/api/auth/* external_proxy), the other gate opt-out', async () => {
+      mockResolveAppToken.mockResolvedValueOnce(resolvedToken('other-project'));
+      const req = createMockRequest('/api/auth/session/refresh', {
+        authorization: 'Bearer bfat_x',
+      });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({
+          pathPattern: '/api/auth/*',
+          targetUrl: 'http://localhost:3000/api/auth',
+          proxyType: 'external_proxy',
+        }),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'TOKEN_PROJECT_MISMATCH' }),
+      );
+    });
+
     it('end to end: a wrong-project token never reaches a public project pipeline', async () => {
       const { db } = require('../db/client');
       db.limit.mockResolvedValueOnce([
