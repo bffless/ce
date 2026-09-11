@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.57](https://github.com/bffless/ce/compare/v0.4.56...v0.4.57) (2026-09-11)
 
-
 ### Added
-
-* **pipelines:** projectRole on PipelineUser — the caller's project role, resolved on every credential path ([#787](https://github.com/bffless/ce/issues/787)) ([b0cc38d](https://github.com/bffless/ce/commit/b0cc38d64c5eaaf48fd6d613db3d8f4c0446c1fe))
+- pipelines: projectRole on PipelineUser — the caller's project role, resolved on every credential path ([#787](https://github.com/bffless/ce/pull/787), thanks @toshimoto821)
 
 ## [0.4.56](https://github.com/bffless/ce/compare/v0.4.55...v0.4.56) (2026-09-07)
 
