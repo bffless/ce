@@ -101,7 +101,9 @@ export class PermissionsService {
     // are pinned to `user` (or carry no role), so a leaked key or guard-issued token cannot widen
     // through this line. An app token presented directly to the proxy (getOptionalUser's Bearer
     // branch) is NOT pinned — it carries the member's real global role, so a global admin's own
-    // token resolves to `owner` here, same standing as that admin's session would have.
+    // token resolves to `owner` here, same standing as that admin's session would have. That
+    // standing only ever reaches the token's own project: ProxyMiddleware.checkVisibilityAndAuth
+    // refuses a token bound elsewhere before any visibility decision, public or private (#789).
     if (user.role === 'admin') return 'owner';
     try {
       return (await this.getUserProjectRole(user.id, projectId)) ?? undefined;
