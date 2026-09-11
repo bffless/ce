@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import type { ProjectRole } from '../../permissions/permissions.service';
 
 /**
  * User information available in pipeline context
@@ -15,6 +16,19 @@ export interface PipelineUser {
   scopes?: string[];
   /** Present only for app tokens: the project the token is bound to. */
   tokenProjectId?: string;
+  /**
+   * The caller's role on the PIPELINE's project (`project_permissions`, direct or
+   * via a group; a global `admin` is `owner` on every project, as
+   * ProjectPermissionGuard rules). Absent when the caller holds no role there or
+   * the lookup failed. Orthogonal to `role` (the global role) and to the API-key
+   * pinning: an API key's user resolves through their own permission rows.
+   *
+   * This is a fact about the USER on this project, not about the credential
+   * presenting them — it says nothing about what the credential itself was
+   * scoped or delegated to do. A rule that cares about delegation must also
+   * read `credential`, `scopes`, and `tokenProjectId`.
+   */
+  projectRole?: ProjectRole;
 }
 
 /**

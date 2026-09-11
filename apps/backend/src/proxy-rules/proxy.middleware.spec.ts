@@ -83,6 +83,7 @@ describe('ProxyMiddleware', () => {
     mockPermissionsService = {
       getUserProjectRole: jest.fn().mockResolvedValue(null),
       meetsRoleRequirement: jest.fn().mockReturnValue(true),
+      getEffectiveProjectRole: jest.fn().mockResolvedValue(undefined),
     } as any;
 
     mockTrafficRoutingService = {
@@ -1100,6 +1101,110 @@ describe('ProxyMiddleware', () => {
           message: 'stream died',
         });
       });
+    });
+  });
+
+  describe("handlePipelineExecution — projectRole (the caller's role on the pipeline's project)", () => {
+    const pipelineRule = (overrides: Record<string, unknown> = {}) =>
+      createMockRule({
+        proxyType: 'pipeline',
+        targetUrl: 'pipeline',
+        pipelineConfig: {
+          name: 'test',
+          steps: [{ name: 'respond', handlerType: 'response_handler', config: {} }],
+        },
+        debugEnabled: true,
+        ...overrides,
+      });
+
+    const createPipelineResponse = (): Response & { headersSent: boolean } =>
+      ({
+        headersSent: false,
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        send: jest.fn(),
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      }) as unknown as Response & { headersSent: boolean };
+
+    it('enriches the pipeline user with projectRole resolved against the PIPELINE project', async () => {
+      jest.spyOn(middleware as any, 'getOptionalUser').mockResolvedValue({
+        id: 'u1',
+        role: 'user',
+        credential: 'session',
+      });
+      mockPermissionsService.getEffectiveProjectRole.mockResolvedValue('contributor');
+      const req = createMockRequest('/public/owner/repo/sha123/api/items');
+      const res = createPipelineResponse();
+
+      await (middleware as any).handlePipelineExecution(
+        req,
+        res,
+        pipelineRule(),
+        'proj-1',
+        undefined,
+      );
+
+      expect(mockPermissionsService.getEffectiveProjectRole).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'u1', role: 'user' }),
+        'proj-1',
+      );
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ id: 'u1', projectRole: 'contributor', groups: [] }),
+        expect.anything(),
+      );
+    });
+
+    it('leaves projectRole absent (not undefined-valued) when the resolver answers undefined', async () => {
+      jest.spyOn(middleware as any, 'getOptionalUser').mockResolvedValue({
+        id: 'u1',
+        role: 'user',
+        credential: 'session',
+      });
+      mockPermissionsService.getEffectiveProjectRole.mockResolvedValue(undefined);
+      const req = createMockRequest('/public/owner/repo/sha123/api/items');
+      const res = createPipelineResponse();
+
+      await (middleware as any).handlePipelineExecution(
+        req,
+        res,
+        pipelineRule(),
+        'proj-1',
+        undefined,
+      );
+
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ id: 'u1', groups: [] }),
+        expect.anything(),
+      );
+      const [, , passedUser] = mockPipelineExecutionService.executePipelineWithDebug.mock.calls[0];
+      expect(passedUser).not.toHaveProperty('projectRole');
+    });
+
+    it('never resolves projectRole for an anonymous pipeline request, and still runs the pipeline', async () => {
+      jest.spyOn(middleware as any, 'getOptionalUser').mockResolvedValue(undefined);
+      const req = createMockRequest('/public/owner/repo/sha123/api/items');
+      const res = createPipelineResponse();
+
+      await (middleware as any).handlePipelineExecution(
+        req,
+        res,
+        pipelineRule(),
+        'proj-1',
+        undefined,
+      );
+
+      expect(mockPermissionsService.getEffectiveProjectRole).not.toHaveBeenCalled();
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        expect.anything(),
+      );
     });
   });
 });

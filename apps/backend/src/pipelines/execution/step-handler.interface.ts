@@ -305,7 +305,8 @@ export interface FunctionHandlerConfig extends BaseHandlerConfig {
    * The code should return the transformed data.
    * Available variables:
    * - data.input: The pipeline input
-   * - data.user: Current user info (id, email, role) if authenticated
+   * - data.user: id, email, role, groups, and — when present — credential,
+   *   scopes, projectRole (the caller's role on this project), if authenticated
    * - data.request: Request info (method, path, query)
    * - data.steps: Output from previous steps (keyed by step name)
    */

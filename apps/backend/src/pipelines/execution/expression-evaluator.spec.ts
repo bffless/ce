@@ -20,3 +20,27 @@ describe('ExpressionEvaluator built-in time functions', () => {
     expect(value as number).toBeLessThanOrEqual(Date.now());
   });
 });
+
+describe('ExpressionEvaluator user.projectRole', () => {
+  const evaluator = new ExpressionEvaluator();
+
+  it('reads user.projectRole off the pipeline user', () => {
+    const withRole = {
+      user: { id: 'u1', projectRole: 'owner' },
+      stepOutputs: {},
+      metadata: {},
+      projectId: 'p',
+      pipelineId: 'x',
+    } as unknown as PipelineContext;
+    expect(evaluator.evaluateExpression('user.projectRole', withRole)).toBe('owner');
+
+    const withoutRole = {
+      user: { id: 'u1' },
+      stepOutputs: {},
+      metadata: {},
+      projectId: 'p',
+      pipelineId: 'x',
+    } as unknown as PipelineContext;
+    expect(evaluator.evaluateExpression('user.projectRole', withoutRole)).toBeUndefined();
+  });
+});

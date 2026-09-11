@@ -9,6 +9,9 @@ import {
   IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import type { ProjectRole } from '../../permissions/permissions.service';
+
+const PROJECT_ROLES: ProjectRole[] = ['owner', 'admin', 'contributor', 'viewer', 'guest'];
 
 /**
  * Mock user configuration for testing pipelines
@@ -46,6 +49,15 @@ export class MockUserDto {
   @IsArray()
   @IsString({ each: true })
   groups?: string[];
+
+  @ApiPropertyOptional({
+    description: "Project role to simulate (the caller's role on this project)",
+    example: 'contributor',
+    enum: PROJECT_ROLES,
+  })
+  @IsOptional()
+  @IsIn(PROJECT_ROLES)
+  projectRole?: ProjectRole;
 }
 
 export class TestPipelineDto {
