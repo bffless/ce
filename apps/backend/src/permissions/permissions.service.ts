@@ -97,8 +97,11 @@ export class PermissionsService {
     projectId: string,
   ): Promise<ProjectRole | undefined> {
     // Global admins act as project owners on every project (project-permission.guard.ts).
-    // The API-key paths never carry `admin` (pinned to `user`, or no role at all), so a
-    // leaked key cannot widen through this line.
+    // `X-API-Key` and guard-issued app tokens (requestUserFromAppToken(..., { pinRoleLikeApiKey: true }))
+    // are pinned to `user` (or carry no role), so a leaked key or guard-issued token cannot widen
+    // through this line. An app token presented directly to the proxy (getOptionalUser's Bearer
+    // branch) is NOT pinned — it carries the member's real global role, so a global admin's own
+    // token resolves to `owner` here, same standing as that admin's session would have.
     if (user.role === 'admin') return 'owner';
     try {
       return (await this.getUserProjectRole(user.id, projectId)) ?? undefined;

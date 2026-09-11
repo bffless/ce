@@ -22,6 +22,11 @@ export interface PipelineUser {
    * ProjectPermissionGuard rules). Absent when the caller holds no role there or
    * the lookup failed. Orthogonal to `role` (the global role) and to the API-key
    * pinning: an API key's user resolves through their own permission rows.
+   *
+   * This is a fact about the USER on this project, not about the credential
+   * presenting them — it says nothing about what the credential itself was
+   * scoped or delegated to do. A rule that cares about delegation must also
+   * read `credential`, `scopes`, and `tokenProjectId`.
    */
   projectRole?: ProjectRole;
 }

@@ -1104,7 +1104,7 @@ describe('ProxyMiddleware', () => {
     });
   });
 
-  describe('handlePipelineExecution — projectRole (spec 11, D27)', () => {
+  describe("handlePipelineExecution — projectRole (the caller's role on the pipeline's project)", () => {
     const pipelineRule = (overrides: Record<string, unknown> = {}) =>
       createMockRule({
         proxyType: 'pipeline',
@@ -1183,6 +1183,28 @@ describe('ProxyMiddleware', () => {
       );
       const [, , passedUser] = mockPipelineExecutionService.executePipelineWithDebug.mock.calls[0];
       expect(passedUser).not.toHaveProperty('projectRole');
+    });
+
+    it('never resolves projectRole for an anonymous pipeline request, and still runs the pipeline', async () => {
+      jest.spyOn(middleware as any, 'getOptionalUser').mockResolvedValue(undefined);
+      const req = createMockRequest('/public/owner/repo/sha123/api/items');
+      const res = createPipelineResponse();
+
+      await (middleware as any).handlePipelineExecution(
+        req,
+        res,
+        pipelineRule(),
+        'proj-1',
+        undefined,
+      );
+
+      expect(mockPermissionsService.getEffectiveProjectRole).not.toHaveBeenCalled();
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        expect.anything(),
+      );
     });
   });
 });

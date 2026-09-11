@@ -37,7 +37,7 @@ import { PipelineUser } from '../pipelines/execution/pipeline-context.interface'
 import { DeploymentsService } from '../deployments/deployments.service';
 import { ProjectsService } from '../projects/projects.service';
 import { UserGroupsService } from '../user-groups/user-groups.service';
-import { PermissionsService, ProjectRole } from '../permissions/permissions.service';
+import { PermissionsService } from '../permissions/permissions.service';
 
 /**
  * Controller for individual proxy rule operations.
@@ -314,9 +314,7 @@ export class ProxyRulesController {
           email: dto.mockUser.email,
           role: dto.mockUser.role,
           groups: dto.mockUser.groups,
-          ...(dto.mockUser.projectRole
-            ? { projectRole: dto.mockUser.projectRole as ProjectRole }
-            : {}),
+          ...(dto.mockUser.projectRole ? { projectRole: dto.mockUser.projectRole } : {}),
         };
       } else {
         // Enrich with the real user's group memberships and their role on this

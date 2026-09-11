@@ -115,7 +115,7 @@ describe('FunctionHandler.execute — user.credential / user.scopes (app tokens)
   });
 });
 
-describe('FunctionHandler.execute — user.projectRole (spec 11)', () => {
+describe('FunctionHandler.execute — user.projectRole', () => {
   it('exposes the project role', async () => {
     const { handler, runnerMock } = createHandler();
     runnerMock.run.mockResolvedValue({ success: true, output: {}, executionTime: 1, logs: [] });

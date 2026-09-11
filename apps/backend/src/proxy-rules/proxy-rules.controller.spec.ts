@@ -481,7 +481,7 @@ describe('ProxyRulesController', () => {
       );
     });
 
-    it('degrades to no projectRole when the lookup fails', async () => {
+    it('omits projectRole when the resolver answers undefined', async () => {
       mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
       mockPermissionsService.getEffectiveProjectRole.mockResolvedValue(undefined);
 
