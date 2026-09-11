@@ -37,7 +37,7 @@ import {
 import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
-import { resolveAppToken } from '../auth/app-token.util';
+import { bearerAppToken, requestUserFromAppToken, resolveAppToken } from '../auth/app-token.util';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
@@ -66,6 +66,8 @@ interface CacheEntry {
 @Injectable()
 export class ProxyMiddleware implements NestMiddleware {
   private readonly logger = new Logger(ProxyMiddleware.name);
+  /** Per-request memo for getOptionalUser (see there). Keyed weakly: dies with the request. */
+  private readonly resolvedUsers = new WeakMap<Request, PipelineUser | undefined>();
 
   // Simple cache for rules (TTL: 10 seconds)
   private ruleCache = new Map<string, CacheEntry>();
@@ -572,6 +574,20 @@ export class ProxyMiddleware implements NestMiddleware {
     aliasName: string | null,
     matchedRule?: ProxyRule,
   ): Promise<'allowed' | 'blocked'> {
+    // An app token is bound to one project: valid, but not for here. The fence
+    // runs ahead of every early return below — a public deployment, a rule that
+    // opted out of the gate — because the pipeline user is built from this same
+    // credential either way, and a token minted for another project must never
+    // reach this project's rules carrying its member's standing (#789). Only a
+    // request that actually presents a `bfat_` bearer pays for the lookup; the
+    // result is memoised on the request, so the pipeline does not resolve it again.
+    if (bearerAppToken(req.headers.authorization)) {
+      const bearerUser = await this.getOptionalUser(req, res);
+      if (bearerUser && this.refuseTokenBoundElsewhere(bearerUser, project, res)) {
+        return 'blocked';
+      }
+    }
+
     // A private deployment gates every /api/* call on a valid session. That would
     // include the endpoint used to renew an expired session, leaving the client no
     // way out: refreshing requires the session that only refreshing can restore.
@@ -670,15 +686,9 @@ export class ProxyMiddleware implements NestMiddleware {
       return 'blocked';
     }
 
-    // An app token is bound to one project: valid, but not for here.
-    if (user.tokenProjectId && user.tokenProjectId !== project.id) {
-      this.logger.debug(
-        `Proxy blocked: app token bound to ${user.tokenProjectId}, not ${project.id}`,
-      );
-      res.status(403).json({
-        message: 'Token is bound to another project',
-        code: 'TOKEN_PROJECT_MISMATCH',
-      });
+    // Already fenced above for a bearer token; kept here for any credential
+    // path that learns to carry `tokenProjectId` without a bearer header.
+    if (this.refuseTokenBoundElsewhere(user, project, res)) {
       return 'blocked';
     }
 
@@ -702,6 +712,29 @@ export class ProxyMiddleware implements NestMiddleware {
 
     // User has access
     return 'allowed';
+  }
+
+  /**
+   * 403 `TOKEN_PROJECT_MISMATCH` (response sent, returns true) when `user` holds
+   * an app token bound to a project other than `project`. The same refusal
+   * `PublicController.tokenBoundElsewhere` gives on the content path.
+   */
+  private refuseTokenBoundElsewhere(
+    user: PipelineUser,
+    project: { id: string },
+    res: Response,
+  ): boolean {
+    if (!user.tokenProjectId || user.tokenProjectId === project.id) {
+      return false;
+    }
+    this.logger.debug(
+      `Proxy blocked: app token bound to ${user.tokenProjectId}, not ${project.id}`,
+    );
+    res.status(403).json({
+      message: 'Token is bound to another project',
+      code: 'TOKEN_PROJECT_MISMATCH',
+    });
+    return true;
   }
 
   /**
@@ -1287,8 +1320,23 @@ export class ProxyMiddleware implements NestMiddleware {
   /**
    * Optionally extract user from session without failing if not authenticated.
    * Returns undefined if no session exists or user cannot be determined.
+   *
+   * Resolved once per request: the visibility gate and the pipeline both ask,
+   * and a credential does not change between them.
    */
   private async getOptionalUser(req: Request, res: Response): Promise<PipelineUser | undefined> {
+    if (this.resolvedUsers.has(req)) {
+      return this.resolvedUsers.get(req);
+    }
+    const user = await this.resolveOptionalUser(req, res);
+    this.resolvedUsers.set(req, user);
+    return user;
+  }
+
+  private async resolveOptionalUser(
+    req: Request,
+    res: Response,
+  ): Promise<PipelineUser | undefined> {
     try {
       // Check if user was already populated by a guard
       if ((req as any).user?.id) {
@@ -1321,18 +1369,16 @@ export class ProxyMiddleware implements NestMiddleware {
         }
       }
 
-      // Try a Bearer app token: the member, narrowed by its scopes (app-token.util)
+      // Try a Bearer app token: the member, narrowed by its scopes (app-token.util).
+      // Built through the one shared builder, under the pipeline policy (the
+      // member's real global role, no API-key pin), then read exactly as a
+      // guard-attached user would be — so this path and OptionalAuthGuard's
+      // cannot drift (#789). The project fence in checkVisibilityAndAuth keeps
+      // that standing on the token's own project.
       const resolved = await resolveAppToken(req.headers.authorization);
       if (resolved) {
         this.logger.debug(`User authenticated via app token: ${resolved.user.id}`);
-        return {
-          id: resolved.user.id,
-          email: resolved.user.email || undefined,
-          role: resolved.user.role || undefined,
-          credential: 'app_token',
-          scopes: resolved.token.scopes,
-          tokenProjectId: resolved.token.projectId,
-        };
+        return this.fromGuardUser(requestUserFromAppToken(resolved, { pinRoleLikeApiKey: false }));
       }
 
       // Try custom domain JWT auth (bffless_access cookie)

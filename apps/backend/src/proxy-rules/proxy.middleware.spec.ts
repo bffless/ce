@@ -16,6 +16,8 @@ jest.mock('../auth/app-token.util', () => ({
   resolveAppToken: jest.fn().mockResolvedValue(null),
 }));
 const { resolveAppToken: mockResolveAppToken } = jest.requireMock('../auth/app-token.util');
+// The real builder (the mock above spreads requireActual): the "cannot drift" test compares against it.
+import { requestUserFromAppToken } from '../auth/app-token.util';
 
 // Mock the database client
 jest.mock('../db/client', () => ({
@@ -824,6 +826,197 @@ describe('ProxyMiddleware', () => {
       );
 
       expect(result).toBe('blocked');
+    });
+  });
+
+  describe('app token bound to another project is fenced before any visibility decision (#789)', () => {
+    const project = { id: 'proj-1', owner: 'owner', name: 'repo' } as any;
+    const pipelineRule = (overrides: Record<string, unknown> = {}) =>
+      createMockRule({ pathPattern: '/api/*', proxyType: 'pipeline', ...overrides });
+
+    const resolvedToken = (tokenProjectId: string, role = 'user') => ({
+      user: { id: 'user-9', email: 'm@example.com', role },
+      token: {
+        id: 'tok-1',
+        projectId: tokenProjectId,
+        scopes: ['workflow:read'],
+        kind: 'personal',
+        clientId: null,
+      },
+    });
+
+    // The default visibility mock in beforeEach is a PUBLIC deployment.
+
+    it('refuses a wrong-project token on a PUBLIC deployment with 403 TOKEN_PROJECT_MISMATCH', async () => {
+      mockResolveAppToken.mockResolvedValueOnce(resolvedToken('other-project', 'admin'));
+      const req = createMockRequest('/api/works', { authorization: 'Bearer bfat_x' });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        pipelineRule(),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Token is bound to another project',
+        code: 'TOKEN_PROJECT_MISMATCH',
+      });
+      expect(mockPermissionsService.getUserProjectRole).not.toHaveBeenCalled();
+    });
+
+    it('still lets a token bound to THIS project through a public deployment without a role lookup', async () => {
+      mockResolveAppToken.mockResolvedValueOnce(resolvedToken(project.id, 'admin'));
+      const req = createMockRequest('/api/works', { authorization: 'Bearer bfat_x' });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        pipelineRule(),
+      );
+
+      expect(result).toBe('allowed');
+      expect(res.status).not.toHaveBeenCalled();
+      expect(mockPermissionsService.getUserProjectRole).not.toHaveBeenCalled();
+    });
+
+    it('never resolves a credential for public traffic that carries no bfat_ bearer (cost unchanged)', async () => {
+      const resolveSpy = jest.spyOn(middleware as any, 'getOptionalUser');
+      const anonymous = createMockRequest('/api/works');
+      const otherBearer = createMockRequest('/api/works', { authorization: 'Bearer eyJhbGci.jwt' });
+      const res = createMockResponse();
+
+      await expect(
+        (middleware as any).checkVisibilityAndAuth(
+          anonymous,
+          res,
+          project,
+          'studio',
+          pipelineRule(),
+        ),
+      ).resolves.toBe('allowed');
+      await expect(
+        (middleware as any).checkVisibilityAndAuth(
+          otherBearer,
+          res,
+          project,
+          'studio',
+          pipelineRule(),
+        ),
+      ).resolves.toBe('allowed');
+
+      expect(resolveSpy).not.toHaveBeenCalled();
+    });
+
+    it('fences a wrong-project token even on a rule that opted out of the visibility gate', async () => {
+      mockResolveAppToken.mockResolvedValueOnce(resolvedToken('other-project'));
+      const req = createMockRequest('/api/hook', { authorization: 'Bearer bfat_x' });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        pipelineRule({ bypassVisibility: true }),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'TOKEN_PROJECT_MISMATCH' }),
+      );
+    });
+
+    it('lets a same-project token through a bypassVisibility rule as before', async () => {
+      mockResolveAppToken.mockResolvedValueOnce(resolvedToken(project.id));
+      const req = createMockRequest('/api/hook', { authorization: 'Bearer bfat_x' });
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        pipelineRule({ bypassVisibility: true }),
+      );
+
+      expect(result).toBe('allowed');
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('end to end: a wrong-project token never reaches a public project pipeline', async () => {
+      const { db } = require('../db/client');
+      db.limit.mockResolvedValueOnce([
+        { id: 'proj-1', owner: 'owner', name: 'repo', defaultProxyRuleSetId: 'rule-set-1' },
+      ]);
+      mockProxyRulesService.getEffectiveRulesForRuleSet.mockResolvedValueOnce([
+        pipelineRule({
+          targetUrl: 'pipeline',
+          pipelineConfig: {
+            name: 'test',
+            steps: [{ name: 'respond', handlerType: 'response_handler', config: {} }],
+          },
+        }),
+      ]);
+      mockResolveAppToken.mockResolvedValueOnce(resolvedToken('other-project', 'admin'));
+      const req = createMockRequest('/public/owner/repo/sha123/api/users', {
+        authorization: 'Bearer bfat_x',
+      });
+      const res = createMockResponse();
+
+      await middleware.use(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'TOKEN_PROJECT_MISMATCH' }),
+      );
+      expect(mockPipelineExecutionService.executePipelineWithDebug).not.toHaveBeenCalled();
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('resolves the credential once per request: the gate and the pipeline share the answer', async () => {
+      mockResolveAppToken.mockClear();
+      mockResolveAppToken.mockResolvedValueOnce(resolvedToken(project.id));
+      const req = createMockRequest('/api/works', { authorization: 'Bearer bfat_x' });
+      const res = createMockResponse();
+
+      const first = await (middleware as any).getOptionalUser(req, res);
+      const second = await (middleware as any).getOptionalUser(req, res);
+
+      expect(first).toEqual(expect.objectContaining({ id: 'user-9', credential: 'app_token' }));
+      expect(second).toBe(first);
+      expect(mockResolveAppToken).toHaveBeenCalledTimes(1);
+    });
+
+    it('builds the pipeline user through the shared builder under the pipeline policy, same shape as a guard-attached token user', async () => {
+      // A global admin's own token keeps the member's real role on this path
+      // (permissions.service getEffectiveProjectRole documents why); the fence
+      // above is what keeps that standing on the token's own project.
+      const resolved = resolvedToken(project.id, 'admin');
+      mockResolveAppToken.mockResolvedValueOnce(resolved);
+      const req = createMockRequest('/api/works', { authorization: 'Bearer bfat_x' });
+
+      const viaProxy = await (middleware as any).getOptionalUser(req, createMockResponse());
+      const viaGuard = (middleware as any).fromGuardUser(
+        requestUserFromAppToken(resolved as any, { pinRoleLikeApiKey: false }),
+      );
+
+      expect(viaProxy).toEqual({
+        id: 'user-9',
+        email: 'm@example.com',
+        role: 'admin',
+        credential: 'app_token',
+        scopes: ['workflow:read'],
+        tokenProjectId: project.id,
+      });
+      expect(viaProxy).toEqual(viaGuard);
     });
   });
 

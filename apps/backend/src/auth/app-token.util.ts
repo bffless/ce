@@ -146,9 +146,12 @@ async function touchLastUsed(tokenId: string): Promise<void> {
 /**
  * What a call site attaches to `request.user` for a token.
  *
- * - `pinRoleLikeApiKey: false` — pipelines and the visibility gate: the token
- *   is the member (real global role); the scope gate and the member's own
- *   project role narrow it.
+ * - `pinRoleLikeApiKey: false` — pipelines and the visibility gate
+ *   (`OptionalAuthGuard`, `ProxyMiddleware.getOptionalUser`): the token is the
+ *   member (real global role); the scope gate and the member's own project
+ *   role narrow it, and the token-project fence (`PublicController`,
+ *   `ProxyMiddleware.checkVisibilityAndAuth`) keeps that standing on the
+ *   token's own project.
  * - `pinRoleLikeApiKey: true` — the admin API (`ApiKeyGuard`): the token behaves
  *   as a project-scoped API key does — `apiKeyProjectId` fences it to its
  *   project and an admin is pinned to `user`, so a leaked token cannot reach
