@@ -286,8 +286,10 @@ export interface FileDeleteHandlerConfig extends BaseHandlerConfig {
   prefix?: string;
   /** Delete a single object, relative to the uploads root (supports expressions). Mutually exclusive with prefix. */
   key?: string;
-  /** Delete a set of unrelated objects sharing no common prefix (e.g. a Site manifest's assets), each relative to the uploads root (each supports expressions). Mutually exclusive with prefix and key. */
-  keys?: string[];
+  /** Delete a set of unrelated objects sharing no common prefix (e.g. a Site manifest's assets), each relative to the uploads root (each supports expressions) — or a single expression string resolving to that array at runtime. Mutually exclusive with prefix, key, and prefixes. */
+  keys?: string[] | string;
+  /** Delete every object under EACH of several prefixes (e.g. a retention sweep purging many run folders), each relative to the uploads root (each supports expressions) — or a single expression string resolving to that array at runtime. Mutually exclusive with prefix, key, and keys. */
+  prefixes?: string[] | string;
   /** List/report what would be deleted but delete nothing. Default: false */
   dryRun?: boolean;
 }

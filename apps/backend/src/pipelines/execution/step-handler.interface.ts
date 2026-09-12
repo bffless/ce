@@ -991,10 +991,11 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
  * Configuration for file_delete handler.
  *
  * Deletes objects within this project's uploads root
- * ({owner}/{repo}/uploads/). Both `prefix` and `key` are RELATIVE to that
- * root, exactly like `subDir` is for the upload/serve handlers, and both are
- * expression-interpolated ({{steps.x.y}}, {{request.body.z}}) before use.
- * Exactly one of `prefix` or `key` must be provided.
+ * ({owner}/{repo}/uploads/). `prefix`, `key`, and every entry of `keys` /
+ * `prefixes` are RELATIVE to that root, exactly like `subDir` is for the
+ * upload/serve handlers, and all are expression-interpolated
+ * ({{steps.x.y}}, {{request.body.z}}) before use.
+ * Exactly one of `prefix`, `key`, `keys`, or `prefixes` must be provided.
  */
 export interface FileDeleteHandlerConfig extends BaseHandlerConfig {
   /**
@@ -1025,6 +1026,29 @@ export interface FileDeleteHandlerConfig extends BaseHandlerConfig {
    *     (`{ deleted: 0 }`), not an error.
    */
   keys?: string[] | string;
+
+  /**
+   * Delete EVERY object under each of several prefixes, each relative to the
+   * uploads root and each expression-interpolated and guarded exactly like
+   * `prefix`. Use this to purge many "folders" in one step (e.g. a retention
+   * sweep deleting every expired run's `runs/<runId>/` prefix). Mutually
+   * exclusive with `prefix`, `key`, and `keys`.
+   *
+   * Same two forms as `keys`:
+   *   - a **static array** of prefix templates
+   *     (`["runs/{{steps.a.id}}/", "runs/{{steps.b.id}}/"]`), or
+   *   - a **single expression string** (e.g. `"steps.cutoff.prefixes"`) that
+   *     resolves AT RUNTIME to an array of string prefixes. A resolved empty
+   *     array is a no-op (`{ deleted: 0 }`), not an error.
+   *
+   * Every entry is resolved and guarded before any storage call (a blank entry
+   * is refused — it must never mean the whole uploads root), so a bad entry
+   * aborts the step before anything is deleted. Storage-level failures are a
+   * different matter: every prefix is still attempted, the result is the sum
+   * across entries, and any per-object failure then fails the step reporting
+   * that sum — the same partial-failure semantics as `keys`.
+   */
+  prefixes?: string[] | string;
 
   /**
    * When true, list and report what WOULD be deleted but delete nothing.
