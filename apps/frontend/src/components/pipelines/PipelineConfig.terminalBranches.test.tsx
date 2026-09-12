@@ -202,6 +202,28 @@ describe('PipelineConfig terminal response branches', () => {
     expect(steps.map((s) => s.name)).toEqual(['maybe_reply', 'log']);
   });
 
+  it('labels the handler type of a non-trailing response handler', () => {
+    const config: Partial<PipelineConfigData> = {
+      name: 'early_responder',
+      steps: [
+        { name: 'prep', handlerType: 'function_handler', config: { code: 'return 1;' } },
+        {
+          name: 'refuse',
+          handlerType: 'response_handler',
+          config: { condition: 'steps.prep.notOk', status: 400, body: '{}' },
+        },
+        { name: 'log', handlerType: 'function_handler', config: { code: 'return 1;' } },
+      ],
+    };
+    render(<PipelineConfig config={config} onChange={vi.fn()} projectId="p1" />);
+
+    fireEvent.click(header('refuse'));
+
+    // Used to render blank: response_handler has no item in the handler picker.
+    const trigger = screen.getByRole('combobox', { name: 'Handler Type' });
+    expect(trigger).toHaveTextContent(/^HTTP Response$/);
+  });
+
   it('still clears a single terminal step via the type dropdown', () => {
     const onChange = vi.fn();
     const single: Partial<PipelineConfigData> = {
