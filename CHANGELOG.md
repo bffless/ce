@@ -7,15 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.58](https://github.com/bffless/ce/compare/v0.4.57...v0.4.58) (2026-09-12)
 
-
 ### Added
-
-* **pipelines:** file_delete gains a prefixes mode (array or expression) for deleting many folders in one step ([#793](https://github.com/bffless/ce/issues/793)) ([a8d6bc1](https://github.com/bffless/ce/commit/a8d6bc19936b33e521cd6321ffa0b48b7cc5c9ef))
-
+- pipelines: file_delete gains a prefixes mode (array or expression) for deleting many folders in one step ([#793](https://github.com/bffless/ce/pull/793), thanks @toshimoto821)
 
 ### Fixed
-
-* **proxy:** refuse an app token bound to another project before any visibility decision ([#790](https://github.com/bffless/ce/issues/790)) ([d619661](https://github.com/bffless/ce/commit/d619661669b8ef59f2aa43a38d9805ac04f3ecf4))
+- proxy: refuse an app token bound to another project before any visibility decision ([#790](https://github.com/bffless/ce/pull/790), thanks @toshimoto821)
 
 ## [0.4.57](https://github.com/bffless/ce/compare/v0.4.56...v0.4.57) (2026-09-11)
 
