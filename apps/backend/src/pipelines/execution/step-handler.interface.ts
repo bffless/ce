@@ -1042,8 +1042,11 @@ export interface FileDeleteHandlerConfig extends BaseHandlerConfig {
    *     array is a no-op (`{ deleted: 0 }`), not an error.
    *
    * Every entry is resolved and guarded before any storage call (a blank entry
-   * is refused — it must never mean the whole uploads root). The result is the
-   * sum across entries; any per-object failure fails the step.
+   * is refused — it must never mean the whole uploads root), so a bad entry
+   * aborts the step before anything is deleted. Storage-level failures are a
+   * different matter: every prefix is still attempted, the result is the sum
+   * across entries, and any per-object failure then fails the step reporting
+   * that sum — the same partial-failure semantics as `keys`.
    */
   prefixes?: string[] | string;
 
