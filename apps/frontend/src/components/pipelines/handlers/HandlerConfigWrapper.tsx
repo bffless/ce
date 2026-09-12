@@ -507,7 +507,7 @@ export function getHandlerDescription(type: HandlerType): string {
     ai_handler: 'Call an AI model for chat or text completion',
     file_upload_handler: 'Upload a file to storage and create a metadata record',
     file_serve_handler: 'Serve a file from storage with caching headers',
-    file_delete: 'Delete objects under a prefix (or a single key) from storage',
+    file_delete: 'Delete objects under one or more prefixes (or by key) from storage',
     image_convert_handler: 'Convert an image to a different format (e.g., HEIC to PNG)',
     replicate: 'Call a Replicate ML model (embeddings, image gen, transcription, etc.)',
     embed_store: 'Store embedding vectors in pgvector for similarity search',

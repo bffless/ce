@@ -14,7 +14,7 @@ import { UploadRecordService } from '../upload-record.service';
  *
  * Deletes objects within the calling project's uploads root
  * ({owner}/{repo}/uploads/) — the same root file_upload/file_serve address via
- * `subDir`. Operates in three mutually-exclusive modes:
+ * `subDir`. Operates in four mutually-exclusive modes:
  *
  *   - prefix: list every object under <uploadsRoot>/<prefix> and delete them all
  *             (object stores have no atomic folder delete, so this is list+delete).
@@ -26,11 +26,18 @@ import { UploadRecordService } from '../upload-record.service';
  *             the dynamic, variable-length case (e.g. a Site manifest mapped to
  *             its object keys) that a static array can't express. A resolved
  *             empty array is a no-op (`{ deleted: 0 }`), not an error.
+ *   - prefixes: delete everything under EACH of several prefixes (e.g. a
+ *             retention sweep purging every expired run's folder). Same two
+ *             forms as `keys` — a static array of prefix templates or a single
+ *             expression string resolving to an array at runtime — and each
+ *             entry is a list+delete exactly like `prefix`. The result is the
+ *             sum across entries; a resolved empty array is a no-op.
  *
- * `prefix`, `key`, and every entry of `keys` are relative to the uploads root
- * and are expression-interpolated before use. This is a destructive handler, so it
- * defends itself: blank prefixes and path traversal are rejected before any
- * storage call (a blank prefix must NEVER mean "delete the whole uploads root").
+ * `prefix`, `key`, and every entry of `keys` / `prefixes` are relative to the
+ * uploads root and are expression-interpolated before use. This is a destructive
+ * handler, so it defends itself: blank prefixes and path traversal are rejected
+ * before any storage call (a blank prefix must NEVER mean "delete the whole
+ * uploads root").
  *
  * Idempotent: a prefix/key matching nothing returns { deleted: 0 }, not an error.
  */
@@ -52,44 +59,58 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
     const hasPrefix = typeof config.prefix === 'string' && config.prefix.length > 0;
     const hasKey = typeof config.key === 'string' && config.key.length > 0;
     const hasKeys = config.keys !== undefined;
+    const hasPrefixes = config.prefixes !== undefined;
 
-    const modes = [hasPrefix, hasKey, hasKeys].filter(Boolean).length;
+    const modes = [hasPrefix, hasKey, hasKeys, hasPrefixes].filter(Boolean).length;
     if (modes > 1) {
       throw new ConfigurationError(
-        'Provide exactly one of "prefix", "key", or "keys"',
+        'Provide exactly one of "prefix", "key", "keys", or "prefixes"',
         'file_delete',
       );
     }
     if (modes === 0) {
-      throw new ConfigurationError('One of "prefix", "key", or "keys" is required', 'file_delete');
+      throw new ConfigurationError(
+        'One of "prefix", "key", "keys", or "prefixes" is required',
+        'file_delete',
+      );
     }
 
     if (hasKeys) {
-      // `keys` may be a static array of key templates, OR a single expression
-      // string that resolves to an array at runtime (validated when it runs).
-      if (typeof config.keys === 'string') {
-        if (config.keys.trim().length === 0) {
-          throw new ConfigurationError(
-            '"keys" expression must be a non-empty string',
-            'file_delete',
-          );
-        }
-      } else if (Array.isArray(config.keys)) {
-        if (config.keys.length === 0) {
-          throw new ConfigurationError('"keys" must be a non-empty array', 'file_delete');
-        }
-        if (!config.keys.every((k) => typeof k === 'string' && k.length > 0)) {
-          throw new ConfigurationError(
-            'Every entry in "keys" must be a non-empty string',
-            'file_delete',
-          );
-        }
-      } else {
+      this.validateList('keys', config.keys);
+    }
+    if (hasPrefixes) {
+      this.validateList('prefixes', config.prefixes);
+    }
+  }
+
+  /**
+   * Shape check shared by the two list modes. The value may be a static array
+   * of templates, OR a single expression string that resolves to an array at
+   * runtime (that resolution is validated when it runs).
+   */
+  private validateList(field: 'keys' | 'prefixes', value: unknown): void {
+    if (typeof value === 'string') {
+      if (value.trim().length === 0) {
         throw new ConfigurationError(
-          '"keys" must be an array of strings or an expression string',
+          `"${field}" expression must be a non-empty string`,
           'file_delete',
         );
       }
+    } else if (Array.isArray(value)) {
+      if (value.length === 0) {
+        throw new ConfigurationError(`"${field}" must be a non-empty array`, 'file_delete');
+      }
+      if (!value.every((k) => typeof k === 'string' && k.length > 0)) {
+        throw new ConfigurationError(
+          `Every entry in "${field}" must be a non-empty string`,
+          'file_delete',
+        );
+      }
+    } else {
+      throw new ConfigurationError(
+        `"${field}" must be an array of strings or an expression string`,
+        'file_delete',
+      );
     }
   }
 
@@ -101,9 +122,22 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
     const { owner, repo } = await this.uploadRecords.resolveOwnerRepo(context, stepName);
     const uploadsRoot = `${owner}/${repo}/uploads/`;
 
+    const isPrefixesMode = config.prefixes !== undefined;
+    if (isPrefixesMode) {
+      const prefixList = this.resolveList('prefixes', config.prefixes!, context, stepName);
+      // Resolve and guard EVERY entry before any storage call, so a single bad
+      // entry aborts the whole step without partially deleting the good ones.
+      const targets = prefixList.map((expr) => {
+        const relPrefix = this.resolveAndGuard(expr, context, stepName, 'prefix');
+        const fullPrefix = this.confineToRoot(uploadsRoot, relPrefix, stepName);
+        return { relPrefix, fullPrefix };
+      });
+      return this.deleteManyPrefixes(targets, dryRun, stepName);
+    }
+
     const isKeysMode = config.keys !== undefined;
     if (isKeysMode) {
-      const keyList = this.resolveKeyList(config.keys!, context, stepName);
+      const keyList = this.resolveList('keys', config.keys!, context, stepName);
       // Resolve and guard EVERY entry before any storage call, so a single bad
       // entry aborts the whole step without partially deleting the good ones.
       const targets = keyList.map((expr) => {
@@ -128,34 +162,36 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
   }
 
   /**
-   * Produce the list of key expressions for `keys` mode.
+   * Produce the list of entry expressions for the `keys` / `prefixes` modes.
    *
-   *   - Array form: a static list of key templates, used as-is (each is still
+   *   - Array form: a static list of templates, used as-is (each is still
    *     interpolated + guarded downstream).
    *   - String form: a single expression that must resolve to an array of
    *     strings at runtime — the dynamic, variable-length case (e.g. a prior
-   *     step parsing a Site manifest into its object keys). A resolved empty
-   *     array is allowed (it makes the whole step a no-op).
+   *     step parsing a Site manifest into its object keys, or computing the
+   *     run prefixes past a retention cutoff). A resolved empty array is
+   *     allowed (it makes the whole step a no-op).
    */
-  private resolveKeyList(
-    keys: string[] | string,
+  private resolveList(
+    field: 'keys' | 'prefixes',
+    value: string[] | string,
     context: PipelineContext,
     stepName: string,
   ): string[] {
-    if (Array.isArray(keys)) {
-      return keys;
+    if (Array.isArray(value)) {
+      return value;
     }
 
-    const resolved = this.expressionEvaluator.evaluateExpression(keys, context, stepName);
+    const resolved = this.expressionEvaluator.evaluateExpression(value, context, stepName);
     if (!Array.isArray(resolved)) {
       throw new ConfigurationError(
-        `"keys" expression "${keys}" must resolve to an array, but resolved to ${typeof resolved}`,
+        `"${field}" expression "${value}" must resolve to an array, but resolved to ${typeof resolved}`,
         stepName,
       );
     }
     if (!resolved.every((k) => typeof k === 'string')) {
       throw new ConfigurationError(
-        `"keys" expression "${keys}" must resolve to an array of strings`,
+        `"${field}" expression "${value}" must resolve to an array of strings`,
         stepName,
       );
     }
@@ -312,5 +348,50 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
         stepName,
       );
     }
+  }
+
+  /**
+   * Delete everything under each of several prefixes. Each prefix is a
+   * list+delete exactly like single-`prefix` mode; results are summed and any
+   * per-object failure (or a prefix whose listing/deletion threw) fails the
+   * step, so partial success is never silently swallowed. dryRun is honoured
+   * per entry: it lists and counts, deleting nothing.
+   */
+  private async deleteManyPrefixes(
+    targets: { relPrefix: string; fullPrefix: string }[],
+    dryRun: boolean,
+    stepName: string,
+  ): Promise<StepResult> {
+    let deleted = 0;
+    const failed: string[] = [];
+
+    for (const { relPrefix, fullPrefix } of targets) {
+      try {
+        if (dryRun) {
+          const keys = await this.storageAdapter.listKeys(fullPrefix);
+          deleted += keys.length;
+          continue;
+        }
+        const result = await this.storageAdapter.deletePrefix(fullPrefix);
+        deleted += result.deleted;
+        failed.push(...result.failed);
+        this.logger.debug(`Deleted ${result.deleted} object(s) under ${fullPrefix}`);
+      } catch (error) {
+        this.logger.warn(`Failed to delete prefix "${relPrefix}": ${(error as Error).message}`);
+        failed.push(relPrefix);
+      }
+    }
+
+    const prefixes = targets.map((t) => t.relPrefix);
+
+    if (failed.length > 0) {
+      throw new StepExecutionError(
+        `Deleted ${deleted} object(s) across ${prefixes.length} prefix(es) but ${failed.length} failed`,
+        stepName,
+        { deleted, failed },
+      );
+    }
+
+    return { success: true, output: { deleted, prefixes, dryRun } };
   }
 }

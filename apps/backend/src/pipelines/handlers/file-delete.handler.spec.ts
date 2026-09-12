@@ -44,9 +44,11 @@ describe('FileDeleteHandler', () => {
   const context = {} as PipelineContext;
 
   describe('validateConfig', () => {
-    it('rejects when neither prefix nor key is provided', () => {
+    it('rejects when none of prefix, key, keys, or prefixes is provided', () => {
       const handler = buildHandler({});
-      expect(() => handler.validateConfig({})).toThrow(/prefix.*or.*key/i);
+      expect(() => handler.validateConfig({})).toThrow(
+        /one of "prefix", "key", "keys", or "prefixes" is required/i,
+      );
     });
 
     it('rejects when both prefix and key are provided', () => {
@@ -102,6 +104,56 @@ describe('FileDeleteHandler', () => {
       const handler = buildHandler({});
       expect(() => handler.validateConfig({ keys: ['a/b', 123 as unknown as string] })).toThrow(
         /string/i,
+      );
+    });
+
+    it('accepts a non-empty prefixes array', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ prefixes: ['runs/a/', 'runs/b/'] })).not.toThrow();
+    });
+
+    it('accepts prefixes as an expression string (resolved at runtime)', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ prefixes: 'steps.cutoff.prefixes' })).not.toThrow();
+    });
+
+    it('rejects a blank prefixes expression string', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ prefixes: '   ' })).toThrow(/non-empty/i);
+    });
+
+    it('rejects an empty prefixes array', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ prefixes: [] })).toThrow(
+        /prefixes.*non-empty|non-empty.*prefixes/i,
+      );
+    });
+
+    it('rejects a prefixes array containing a blank or non-string entry', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ prefixes: ['runs/a/', ''] })).toThrow(/non-empty/i);
+      expect(() =>
+        handler.validateConfig({ prefixes: ['runs/a/', 7 as unknown as string] }),
+      ).toThrow(/string/i);
+    });
+
+    it('rejects prefixes that is neither an array nor a string', () => {
+      const handler = buildHandler({});
+      expect(() =>
+        handler.validateConfig({ prefixes: { not: 'valid' } as unknown as string[] }),
+      ).toThrow(/array of strings or an expression string/i);
+    });
+
+    it('rejects prefixes combined with prefix, key, or keys', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ prefixes: ['a/'], prefix: 'b/' })).toThrow(
+        /exactly one/i,
+      );
+      expect(() => handler.validateConfig({ prefixes: ['a/'], key: 'b/c' })).toThrow(
+        /exactly one/i,
+      );
+      expect(() => handler.validateConfig({ prefixes: ['a/'], keys: ['b/c'] })).toThrow(
+        /exactly one/i,
       );
     });
   });
@@ -436,6 +488,237 @@ describe('FileDeleteHandler', () => {
       );
       expect(exists).not.toHaveBeenCalled();
       expect(del).not.toHaveBeenCalled();
+    });
+  });
+
+  // `prefixes` — many "folders" in one step, each a list+delete like `prefix`.
+  describe('prefixes mode', () => {
+    it('deletes everything under each prefix and returns the summed count', async () => {
+      const deletePrefix = jest.fn((full: string) =>
+        Promise.resolve({ deleted: full.endsWith('a/') ? 3 : 4, failed: [] }),
+      );
+      const handler = buildHandler({ deletePrefix });
+
+      const prefixes = ['runs/a/', 'runs/b/'];
+      const result = await handler.execute(context, step({ prefixes }));
+
+      expect(deletePrefix).toHaveBeenCalledTimes(2);
+      expect(deletePrefix).toHaveBeenCalledWith(`${UPLOADS_ROOT}runs/a/`);
+      expect(deletePrefix).toHaveBeenCalledWith(`${UPLOADS_ROOT}runs/b/`);
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 7, prefixes, dryRun: false },
+      });
+    });
+
+    it('is idempotent: prefixes matching nothing contribute 0 with no error', async () => {
+      const deletePrefix = jest.fn().mockResolvedValue({ deleted: 0, failed: [] });
+      const handler = buildHandler({ deletePrefix });
+
+      const prefixes = ['runs/gone-1/', 'runs/gone-2/'];
+      const result = await handler.execute(context, step({ prefixes }));
+
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 0, prefixes, dryRun: false },
+      });
+    });
+
+    it('interpolates each prefix template against the uploads root', async () => {
+      const deletePrefix = jest.fn().mockResolvedValue({ deleted: 1, failed: [] });
+      const handler = buildHandler({ deletePrefix }, (expr) =>
+        expr.replace('{{steps.a.id}}', 'r1').replace('{{steps.b.id}}', 'r2'),
+      );
+
+      const result = await handler.execute(
+        context,
+        step({ prefixes: ['runs/{{steps.a.id}}/', 'runs/{{steps.b.id}}/'] }),
+      );
+
+      expect(deletePrefix).toHaveBeenCalledWith(`${UPLOADS_ROOT}runs/r1/`);
+      expect(deletePrefix).toHaveBeenCalledWith(`${UPLOADS_ROOT}runs/r2/`);
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 2, prefixes: ['runs/r1/', 'runs/r2/'], dryRun: false },
+      });
+    });
+
+    it('dryRun lists each prefix, sums the counts, and deletes nothing', async () => {
+      const deletePrefix = jest.fn();
+      const listKeys = jest.fn((full: string) =>
+        Promise.resolve(full.endsWith('a/') ? ['x', 'y'] : ['z']),
+      );
+      const handler = buildHandler({ deletePrefix, listKeys });
+
+      const prefixes = ['runs/a/', 'runs/b/'];
+      const result = await handler.execute(context, step({ prefixes, dryRun: true }));
+
+      expect(listKeys).toHaveBeenCalledWith(`${UPLOADS_ROOT}runs/a/`);
+      expect(listKeys).toHaveBeenCalledWith(`${UPLOADS_ROOT}runs/b/`);
+      expect(deletePrefix).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 3, prefixes, dryRun: true },
+      });
+    });
+
+    it('surfaces per-object failures as an error reporting the summed count', async () => {
+      const deletePrefix = jest.fn((full: string) =>
+        Promise.resolve(
+          full.endsWith('b/')
+            ? { deleted: 1, failed: [`${full}stuck`] }
+            : { deleted: 2, failed: [] },
+        ),
+      );
+      const handler = buildHandler({ deletePrefix });
+
+      await expect(
+        handler.execute(context, step({ prefixes: ['runs/a/', 'runs/b/', 'runs/c/'] })),
+      ).rejects.toThrow(/Deleted 5 object\(s\) across 3 prefix\(es\) but 1 failed/);
+      // Every prefix is still attempted; one failing prefix does not stop the rest.
+      expect(deletePrefix).toHaveBeenCalledTimes(3);
+    });
+
+    it('treats a prefix whose deletion throws as failed and still processes the rest', async () => {
+      const deletePrefix = jest.fn((full: string) =>
+        full.endsWith('b/')
+          ? Promise.reject(new Error('boom'))
+          : Promise.resolve({ deleted: 2, failed: [] }),
+      );
+      const handler = buildHandler({ deletePrefix });
+
+      await expect(
+        handler.execute(context, step({ prefixes: ['runs/a/', 'runs/b/', 'runs/c/'] })),
+      ).rejects.toThrow(/4 object\(s\).*1 failed/);
+      expect(deletePrefix).toHaveBeenCalledTimes(3);
+    });
+
+    it('rejects a prefixes entry containing ".." before any storage call', async () => {
+      const deletePrefix = jest.fn();
+      const listKeys = jest.fn();
+      const handler = buildHandler({ deletePrefix, listKeys });
+
+      await expect(
+        handler.execute(context, step({ prefixes: ['runs/ok/', 'runs/../../other/'] })),
+      ).rejects.toThrow(/traversal/i);
+      expect(deletePrefix).not.toHaveBeenCalled();
+      expect(listKeys).not.toHaveBeenCalled();
+    });
+
+    it('rejects a prefixes entry that resolves to blank before any storage call', async () => {
+      const deletePrefix = jest.fn();
+      const handler = buildHandler({ deletePrefix }, (expr) =>
+        expr === '{{blank}}' ? '   ' : expr,
+      );
+
+      await expect(
+        handler.execute(context, step({ prefixes: ['runs/ok/', '{{blank}}'] })),
+      ).rejects.toThrow(/empty/i);
+      expect(deletePrefix).not.toHaveBeenCalled();
+    });
+
+    it('rejects a prefixes entry that resolves to "/" before any storage call', async () => {
+      const deletePrefix = jest.fn();
+      const handler = buildHandler({ deletePrefix }, (expr) => (expr === '{{root}}' ? '/' : expr));
+
+      await expect(
+        handler.execute(context, step({ prefixes: ['runs/ok/', '{{root}}'] })),
+      ).rejects.toThrow(/empty/i);
+      expect(deletePrefix).not.toHaveBeenCalled();
+    });
+  });
+
+  // `prefixes` given as a SINGLE expression string that resolves to an array at
+  // runtime — e.g. a prior step computing every run prefix past a retention cutoff.
+  describe('prefixes expression mode', () => {
+    const PREFIXES_EXPR = 'steps.cutoff.prefixes';
+
+    it('resolves the expression to an array and deletes under each prefix', async () => {
+      const deletePrefix = jest.fn().mockResolvedValue({ deleted: 2, failed: [] });
+      const resolved = ['workflows/w/runs/r1/', 'workflows/w/runs/r2/', 'workflows/w/runs/r3/'];
+      const handler = buildHandler(
+        { deletePrefix },
+        (expr) => expr,
+        (expr) => (expr === PREFIXES_EXPR ? resolved : expr),
+      );
+
+      const result = await handler.execute(context, step({ prefixes: PREFIXES_EXPR }));
+
+      resolved.forEach((p) => expect(deletePrefix).toHaveBeenCalledWith(`${UPLOADS_ROOT}${p}`));
+      expect(deletePrefix).toHaveBeenCalledTimes(3);
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 6, prefixes: resolved, dryRun: false },
+      });
+    });
+
+    it('treats a resolved empty array as a no-op (deleted: 0, no storage calls)', async () => {
+      const deletePrefix = jest.fn();
+      const listKeys = jest.fn();
+      const handler = buildHandler(
+        { deletePrefix, listKeys },
+        (expr) => expr,
+        () => [],
+      );
+
+      const result = await handler.execute(context, step({ prefixes: PREFIXES_EXPR }));
+
+      expect(deletePrefix).not.toHaveBeenCalled();
+      expect(listKeys).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 0, prefixes: [], dryRun: false },
+      });
+    });
+
+    it('throws when the expression resolves to a non-array', async () => {
+      const handler = buildHandler(
+        { deletePrefix: jest.fn() },
+        (expr) => expr,
+        () => 'runs/only-one/',
+      );
+      await expect(handler.execute(context, step({ prefixes: PREFIXES_EXPR }))).rejects.toThrow(
+        /"prefixes" expression .* must resolve to an array/i,
+      );
+    });
+
+    it('throws when the resolved array contains a non-string entry', async () => {
+      const handler = buildHandler(
+        { deletePrefix: jest.fn() },
+        (expr) => expr,
+        () => ['runs/ok/', 42],
+      );
+      await expect(handler.execute(context, step({ prefixes: PREFIXES_EXPR }))).rejects.toThrow(
+        /array of strings/i,
+      );
+    });
+
+    it('still guards each resolved prefix against traversal before any storage call', async () => {
+      const deletePrefix = jest.fn();
+      const handler = buildHandler(
+        { deletePrefix },
+        (expr) => expr,
+        () => ['runs/ok/', '../../other/'],
+      );
+
+      await expect(handler.execute(context, step({ prefixes: PREFIXES_EXPR }))).rejects.toThrow(
+        /traversal/i,
+      );
+      expect(deletePrefix).not.toHaveBeenCalled();
+    });
+
+    it('still refuses a resolved blank entry before any storage call', async () => {
+      const deletePrefix = jest.fn();
+      const handler = buildHandler(
+        { deletePrefix },
+        (expr) => expr,
+        () => ['runs/ok/', ''],
+      );
+
+      await expect(handler.execute(context, step({ prefixes: PREFIXES_EXPR }))).rejects.toThrow(
+        /empty/i,
+      );
+      expect(deletePrefix).not.toHaveBeenCalled();
     });
   });
 });
