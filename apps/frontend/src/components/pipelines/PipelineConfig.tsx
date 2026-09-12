@@ -120,13 +120,22 @@ const HANDLER_GROUPS: { label: string; types: HandlerType[] }[] = [
 
 function HandlerTypeSelectContent({
   unsupported,
+  current,
 }: {
   /** Map of handler type → reason it's disabled (e.g. storage backend can't presign) */
   unsupported?: Partial<Record<HandlerType, string>>;
+  /** The step's current type. Terminal types (response/proxy) aren't offered in the
+   *  picker, but a non-trailing one still sits in this list, so it needs an item or
+   *  Radix has nothing to mark selected. */
+  current?: HandlerType;
 }) {
+  const groups =
+    current && !HANDLER_GROUPS.some((g) => g.types.includes(current))
+      ? [...HANDLER_GROUPS, { label: 'Current', types: [current] }]
+      : HANDLER_GROUPS;
   return (
     <>
-      {HANDLER_GROUPS.map((group, i) => (
+      {groups.map((group, i) => (
         <Fragment key={group.label}>
           {i > 0 && <SelectSeparator />}
           <SelectGroup>
@@ -772,10 +781,15 @@ export function PipelineConfig({
                               }}
                             >
                               <SelectTrigger id={`step-${key}-type`}>
-                                <SelectValue />
+                                {/* Explicit label: the item body is a two-line name + description
+                                    that Radix would otherwise mirror (clamped) into the trigger. */}
+                                <SelectValue>{getHandlerDisplayName(step.handlerType)}</SelectValue>
                               </SelectTrigger>
                               <SelectContent className="max-h-[400px]">
-                                <HandlerTypeSelectContent unsupported={unsupportedHandlers} />
+                                <HandlerTypeSelectContent
+                                  unsupported={unsupportedHandlers}
+                                  current={step.handlerType}
+                                />
                               </SelectContent>
                             </Select>
                           </div>
@@ -1278,10 +1292,13 @@ data: {"type":"text-delta","value":" world"}
                               }}
                             >
                               <SelectTrigger id={`post-step-${key}-type`}>
-                                <SelectValue />
+                                <SelectValue>{getHandlerDisplayName(step.handlerType)}</SelectValue>
                               </SelectTrigger>
                               <SelectContent className="max-h-[400px]">
-                                <HandlerTypeSelectContent unsupported={unsupportedHandlers} />
+                                <HandlerTypeSelectContent
+                                  unsupported={unsupportedHandlers}
+                                  current={step.handlerType}
+                                />
                               </SelectContent>
                             </Select>
                           </div>
