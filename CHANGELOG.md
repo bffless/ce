@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.59](https://github.com/bffless/ce/compare/v0.4.58...v0.4.59) (2026-09-12)
 
-
 ### Fixed
-
-* **frontend:** show the selected handler type label in the pipeline step picker ([#794](https://github.com/bffless/ce/issues/794)) ([d9f1e63](https://github.com/bffless/ce/commit/d9f1e639097d13913ab9deab3f97c930ee111f24))
+- frontend: show the selected handler type label in the pipeline step picker ([#794](https://github.com/bffless/ce/pull/794), thanks @toshimoto821)
 
 ## [0.4.58](https://github.com/bffless/ce/compare/v0.4.57...v0.4.58) (2026-09-12)
 
