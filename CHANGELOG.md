@@ -7,16 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.60](https://github.com/bffless/ce/compare/v0.4.59...v0.4.60) (2026-09-13)
 
-
 ### Added
-
-* **ffmpeg:** stream large remote-Worker inputs from the signed URL ([#797](https://github.com/bffless/ce/issues/797)) ([845e2c1](https://github.com/bffless/ce/commit/845e2c1232ded15489384f390d21bd9b44cf38d2)), closes [#796](https://github.com/bffless/ce/issues/796)
-
+- ffmpeg: stream large remote-Worker inputs from the signed URL ([#797](https://github.com/bffless/ce/pull/797), thanks @toshimoto821)
 
 ### Fixed
-
-* **ffmpeg:** sliced clips no longer open on a black screen when a span starts on a still frame ([#800](https://github.com/bffless/ce/issues/800)) ([caa87bd](https://github.com/bffless/ce/commit/caa87bdbb5abf079f0b06da483e289919bd5659d))
-* **ffmpeg:** stitched videos no longer report a days-long duration ([#799](https://github.com/bffless/ce/issues/799)) ([3b9b727](https://github.com/bffless/ce/commit/3b9b7279529117ab2c319c52a1198d38406bb1c5)), closes [#798](https://github.com/bffless/ce/issues/798)
+- ffmpeg: sliced clips no longer open on a black screen when a span starts on a still frame ([#800](https://github.com/bffless/ce/pull/800), thanks @toshimoto821)
+- ffmpeg: stitched videos no longer report a days-long duration ([#799](https://github.com/bffless/ce/pull/799), thanks @toshimoto821)
 
 ## [0.4.59](https://github.com/bffless/ce/compare/v0.4.58...v0.4.59) (2026-09-12)
 
