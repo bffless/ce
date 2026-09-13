@@ -16,6 +16,16 @@
  *    A clip's timescale × duration then overflows the 32-bit sample tables,
  *    its timestamps wrap, and every later concat inherits a video track
  *    reporting days. 90000 is the conventional video clock and fits 13 h.
+ * 4. Each span keeps the frame ON SCREEN at its start. A screen recording is
+ *    variable-frame-rate: a still screen writes no frames for seconds (49 s
+ *    measured, #798), and `trim=<start>:<end>` keeps only frames at or after
+ *    start — a span opening inside a still loses its picture until the screen
+ *    next changes (a black clip start, or a span with no video at all). So a
+ *    one-frame head branch (`fps` with `start_time` emits exactly the frame
+ *    showing at start; its rate is irrelevant, only that frame is kept) is
+ *    interleaved at t=0 with the untouched frames strictly after start. The
+ *    body stays passthrough VFR — no frame-rate conversion, ~one extra frame
+ *    per span — and both branches rebase to the same shared origin as (1).
  *
  * Encode profile is the wasm one (libx264 ultrafast / yuv420p / aac /
  * +faststart) so server clips stream-copy-concat with wasm clips and with each
@@ -65,7 +75,14 @@ function spanFilterGraph(spans: Span[], audioFades: boolean): string {
     const s = secs(v.start);
     const e = secs(v.end);
     const origin = `PTS-${s}/TB`;
-    parts.push(`[0:v]trim=${s}:${e},setpts=${origin}[v${i}]`);
+    // Held frame at the span start (detail 4): head = the frame showing at `s`,
+    // body = frames strictly after `s`, merged by timestamp.
+    parts.push(
+      `[0:v]trim=end=${e},split[vh${i}][vb${i}]`,
+      `[vh${i}]fps=fps=10:start_time=${s},trim=end_frame=1,settb=AVTB,setpts=0[vf${i}]`,
+      `[vb${i}]select='gt(t\\,${s})',settb=AVTB,setpts=${origin}[vr${i}]`,
+      `[vf${i}][vr${i}]interleave[v${i}]`,
+    );
     const len = v.end - v.start;
     const fade = audioFades
       ? `,afade=t=in:st=0:d=${secs(FADE)},afade=t=out:st=${secs(Math.max(0, len - FADE))}:d=${secs(FADE)}`

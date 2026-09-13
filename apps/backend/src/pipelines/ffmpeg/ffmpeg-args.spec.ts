@@ -49,8 +49,24 @@ describe('buildSliceArgs — single span (fast-seek cut, port of slice.ts)', () 
 
   it('trims both streams against one shared origin (A/V sync)', () => {
     const graph = argAfter(args, '-filter_complex');
-    expect(graph).toContain('[0:v]trim=104:228,setpts=PTS-104/TB[v0]');
+    expect(graph).toContain("[vb0]select='gt(t\\,104)',settb=AVTB,setpts=PTS-104/TB[vr0]");
     expect(graph).toContain('[0:a]atrim=104:228,asetpts=PTS-104/TB[a0]');
+  });
+
+  /**
+   * #798. A VFR screen recording writes no frames while the screen is still, and
+   * a bare `trim=104:228` keeps only frames at or after 104 — a cut opening
+   * inside a still started black (21.1 s measured). The frame on screen at 104
+   * must be emitted at t=0, with the rest of the span left passthrough.
+   */
+  it('keeps the frame on screen at the span start (held-frame head)', () => {
+    const graph = argAfter(args, '-filter_complex');
+    expect(graph).toContain('[0:v]trim=end=228,split[vh0][vb0]');
+    expect(graph).toContain(
+      '[vh0]fps=fps=10:start_time=104,trim=end_frame=1,settb=AVTB,setpts=0[vf0]',
+    );
+    expect(graph).toContain('[vf0][vr0]interleave[v0]');
+    expect(graph).not.toContain('trim=104:228,setpts');
   });
 
   it('keeps the wasm-proven encode profile and fps passthrough', () => {
@@ -106,9 +122,21 @@ describe('buildSliceArgs — multi-span (assemble, port of assemble.ts)', () => 
   });
 
   it('emits per-span shared-origin trims and an interleaved concat', () => {
-    expect(graph).toContain('[0:v]trim=0:2,setpts=PTS-0/TB[v0]');
-    expect(graph).toContain('[0:v]trim=5:8.5,setpts=PTS-5/TB[v1]');
+    expect(graph).toContain("[vb0]select='gt(t\\,0)',settb=AVTB,setpts=PTS-0/TB[vr0]");
+    expect(graph).toContain("[vb1]select='gt(t\\,5)',settb=AVTB,setpts=PTS-5/TB[vr1]");
     expect(graph).toContain('[v0][a0][v1][a1]concat=n=2:v=1:a=1[vout][aout]');
+  });
+
+  it('gives every span its own held-frame head, so no span opens without a picture', () => {
+    expect(graph).toContain('[0:v]trim=end=2,split[vh0][vb0]');
+    expect(graph).toContain(
+      '[vh0]fps=fps=10:start_time=0,trim=end_frame=1,settb=AVTB,setpts=0[vf0]',
+    );
+    expect(graph).toContain('[0:v]trim=end=8.5,split[vh1][vb1]');
+    expect(graph).toContain(
+      '[vh1]fps=fps=10:start_time=5,trim=end_frame=1,settb=AVTB,setpts=0[vf1]',
+    );
+    expect(graph).toContain('[vf1][vr1]interleave[v1]');
   });
 
   it('audioFades adds ~10ms edge fades anchored per piece', () => {
