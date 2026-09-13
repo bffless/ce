@@ -26,7 +26,13 @@ export interface WorkerEnvelope {
     timeoutSeconds?: number;
     fallbackFor?: string;
   }>;
-  inputs: Array<{ name: string; url: string }>;
+  /**
+   * `stream: true` (#796): the Worker does NOT download this input — `{in:NAME}`
+   * resolves to `url` itself and ffmpeg reads it with range requests. Only ever
+   * sent to a Worker whose /health reports `protocol >= STREAM_INPUTS_MIN_WORKER_PROTOCOL`;
+   * absent means "download", which is what every Worker has always done.
+   */
+  inputs: Array<{ name: string; url: string; stream?: true }>;
   outputs: Array<{ name: string; url: string; contentType: string }>;
   files: Array<{ name: string; content: string }>;
   maxSeconds: number;
@@ -51,7 +57,10 @@ export interface WorkerResponse {
   stdout: string;
   stderrTail: string;
   outputs: Array<{ name: string; bytes: number }>;
+  /** Size of every input, downloaded or streamed (a streamed input's size comes from its first response). */
   bytesIn: number;
+  /** The part of `bytesIn` read in place from a signed URL instead of downloaded. Absent on older Workers. */
+  bytesStreamed?: number;
   bytesOut: number;
   timings: { transferInMs: number; ffmpegMs: number; transferOutMs: number; totalMs: number };
   worker: { version: string; ffmpeg: string };
@@ -64,6 +73,58 @@ export interface WorkerHealth {
   ffmpeg: string | null;
   ops: string[];
   uptimeS: number;
+  /**
+   * The envelope features this Worker build understands, owned by the Worker
+   * (workers/ffmpeg/job.mjs `WORKER_PROTOCOL`) rather than read off `version`:
+   * image versions are CE tags (`v0.4.59`, `preview-2026-09-12-<sha>`, `dev`) and
+   * only some of them are semver. Absent = 1 (download-only Workers).
+   */
+  protocol?: number;
+}
+
+/** First Worker protocol that accepts `inputs[].stream` (#796). */
+export const STREAM_INPUTS_MIN_WORKER_PROTOCOL = 2;
+
+/** Does this Worker accept streamed inputs? Anything unknown is "no" — it keeps downloading. */
+export function workerSupportsStreamInputs(health: Pick<WorkerHealth, 'protocol'> | undefined) {
+  return (
+    typeof health?.protocol === 'number' && health.protocol >= STREAM_INPUTS_MIN_WORKER_PROTOCOL
+  );
+}
+
+/**
+ * Input options for an input ffmpeg reads over HTTP(S) for the whole encode:
+ * without them one dropped connection mid-job fails the step. They are
+ * protocol options, so they are only ever sent for a streamed input — on a
+ * local scratch path ffmpeg rejects them.
+ */
+export const STREAM_RECONNECT_FLAGS = [
+  '-reconnect',
+  '1',
+  '-reconnect_on_network_error',
+  '1',
+  '-reconnect_delay_max',
+  '5',
+] as const;
+
+const IN_PLACEHOLDER = /^\{in:([^}]+)\}$/;
+
+/**
+ * Inserts STREAM_RECONNECT_FLAGS before each `-i` whose very next token is the
+ * whole-token `{in:NAME}` of a streamed input. ffmpeg-args.ts always emits
+ * `'-i', <input>` adjacently, so this is an exact token match; a streamed
+ * placeholder anywhere else (ffprobe's positional input) is left alone.
+ */
+export function insertReconnectFlags(argv: string[], streamed: ReadonlySet<string>): string[] {
+  if (streamed.size === 0) return argv;
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const next = argv[i + 1];
+    const match = argv[i] === '-i' && next !== undefined ? IN_PLACEHOLDER.exec(next) : null;
+    if (match && streamed.has(match[1])) out.push(...STREAM_RECONNECT_FLAGS);
+    out.push(argv[i]);
+  }
+  return out;
 }
 
 export interface SignedUrls {
@@ -86,17 +147,27 @@ export function envelopeMaxSeconds(
   return Math.max(60, Math.min(env.maxSeconds, env.jobMaxSeconds - 60));
 }
 
+/**
+ * `opts.streamInputs`: the target Worker accepts `inputs[].stream` (see
+ * workerSupportsStreamInputs). Off → every input is downloaded and argv is
+ * byte-identical to what it has always been, whatever the job asked for.
+ */
 export async function buildEnvelope(
   job: FfmpegJob,
   urls: SignedUrls,
   env: FfmpegEnvConfig,
+  opts: { streamInputs?: boolean } = {},
 ): Promise<WorkerEnvelope> {
   const ttl = signedUrlTtlSeconds(env);
+  const streamed = new Set(
+    opts.streamInputs ? job.inputs.filter((i) => i.stream === true).map((i) => i.name) : [],
+  );
   const [inputs, outputs] = await Promise.all([
     Promise.all(
       job.inputs.map(async (input) => ({
         name: input.name,
         url: await urls.getUrl(input.key, ttl),
+        ...(streamed.has(input.name) ? { stream: true as const } : {}),
       })),
     ),
     Promise.all(
@@ -115,7 +186,7 @@ export async function buildEnvelope(
       return {
         id: cmd.id,
         kind: cmd.kind,
-        argv: [...globalFlags, ...cmd.argv],
+        argv: [...globalFlags, ...insertReconnectFlags(cmd.argv, streamed)],
         ...(cmd.timeoutSeconds !== undefined ? { timeoutSeconds: cmd.timeoutSeconds } : {}),
         ...(cmd.fallbackFor !== undefined ? { fallbackFor: cmd.fallbackFor } : {}),
       };

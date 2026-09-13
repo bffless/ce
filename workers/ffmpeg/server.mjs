@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { runJob as defaultRunJob, validateEnvelope } from './job.mjs';
+import { runJob as defaultRunJob, validateEnvelope, WORKER_PROTOCOL } from './job.mjs';
 
 const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 
@@ -76,6 +76,8 @@ export function createServer({
         ffmpeg,
         ops: ['ffmpeg', 'ffprobe'],
         uptimeS: Math.round(process.uptime()),
+        // Which envelope features this build accepts; CE gates streamed inputs on it.
+        protocol: WORKER_PROTOCOL,
       });
       return;
     }
@@ -163,6 +165,7 @@ export function createServer({
           code: result.code ?? null,
           totalMs: result.timings?.totalMs ?? null,
           bytesIn: result.bytesIn,
+          bytesStreamed: result.bytesStreamed ?? 0,
           bytesOut: result.bytesOut,
         }),
       );
