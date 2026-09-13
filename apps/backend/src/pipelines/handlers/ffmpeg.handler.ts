@@ -724,7 +724,8 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
             argv: buildExtractAudioArgs(`{in:${inName}}`, '{out:out.wav}'),
           },
         ],
-        inputs: [{ name: inName, key: inputKey }],
+        // One large source read sequentially: a remote Worker may stream it (#796).
+        inputs: [{ name: inName, key: inputKey, stream: true }],
         outputs: [{ name: 'out.wav', key: outputKey, contentType: 'audio/wav' }],
         files: [],
       },
@@ -984,7 +985,10 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           }),
         })),
       ],
-      inputs: [{ name: inName, key: inputKey }],
+      // Streamable (#796), but NOT free: every still is its own `-ss … -i` process,
+      // so each one re-opens the URL (and re-reads a trailing moov) before seeking.
+      // Still cheaper than holding the whole source in a Cloud Run Worker's memory.
+      inputs: [{ name: inName, key: inputKey, stream: true }],
       outputs,
       files: [],
     });
@@ -1095,7 +1099,8 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       {
         id: stepName,
         commands,
-        inputs: [{ name: inName, key: inputKey }],
+        // A single span fast-seeks before -i, so a stream fetches only its bytes (#796).
+        inputs: [{ name: inName, key: inputKey, stream: true }],
         outputs,
         files: [],
       },

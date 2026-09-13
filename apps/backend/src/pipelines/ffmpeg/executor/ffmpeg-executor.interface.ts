@@ -15,6 +15,13 @@ export type FfmpegExecutorName = 'local' | 'remote';
 export interface FfmpegJobInput {
   name: string;
   key: string;
+  /**
+   * A hint that this input may be read in place from its signed URL rather than
+   * downloaded first (#796) — for ops that read one large source. Only the
+   * remote executor acts on it, and only against a Worker that supports it; the
+   * local executor always downloads (its scratch is real disk).
+   */
+  stream?: true;
 }
 export interface FfmpegJobOutput {
   name: string;

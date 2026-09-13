@@ -453,3 +453,73 @@ describe('testConnection()', () => {
     });
   });
 });
+
+describe('streamed inputs are gated on the Worker protocol (#796)', () => {
+  const streamJob = {
+    ...job,
+    inputs: [{ name: 'in.mp4', key: 'k/in.mp4', stream: true as const }],
+  };
+  const posted = (client: { postJob: jest.Mock }) => client.postJob.mock.calls[0][0];
+
+  it('a protocol-2 Worker gets stream:true and reconnect flags before the streamed -i', async () => {
+    const { executor, client } = make();
+    client.health.mockResolvedValue({ ...health, protocol: 2 });
+    await executor.run(streamJob, { signal: sig() });
+    expect(posted(client).inputs).toEqual([
+      { name: 'in.mp4', url: 'https://b/k/in.mp4', stream: true },
+    ]);
+    expect(posted(client).commands[0].argv).toEqual([
+      '-nostdin',
+      '-hide_banner',
+      '-y',
+      '-reconnect',
+      '1',
+      '-reconnect_on_network_error',
+      '1',
+      '-reconnect_delay_max',
+      '5',
+      '-i',
+      '{in:in.mp4}',
+      '{out:out.wav}',
+    ]);
+  });
+
+  it('an older Worker (no protocol in /health) gets neither stream nor reconnect flags', async () => {
+    const { executor, client } = make();
+    await executor.run(streamJob, { signal: sig() });
+    expect(posted(client).inputs).toEqual([{ name: 'in.mp4', url: 'https://b/k/in.mp4' }]);
+    expect(posted(client).commands[0].argv).not.toContain('-reconnect');
+  });
+
+  it('an unreachable /health falls back to downloading; the job POST still runs', async () => {
+    const { executor, client } = make();
+    client.health.mockRejectedValue(new Error('ECONNREFUSED'));
+    await executor.run(streamJob, { signal: sig() });
+    expect(posted(client).inputs[0]).not.toHaveProperty('stream');
+  });
+
+  it('reuses the readiness cache: ready() then run() probes /health once', async () => {
+    const { executor, client } = make();
+    client.health.mockResolvedValue({ ...health, protocol: 2 });
+    await executor.ready();
+    await executor.run(streamJob, { signal: sig() });
+    expect(client.health).toHaveBeenCalledTimes(1);
+    expect(posted(client).inputs[0].stream).toBe(true);
+  });
+
+  it('a job with no stream-hinted input never probes /health from run()', async () => {
+    const { executor, client } = make();
+    await executor.run(job, { signal: sig() });
+    expect(client.health).not.toHaveBeenCalled();
+  });
+
+  it('logs bytesStreamed from the Worker response', async () => {
+    const { executor, client } = make();
+    client.health.mockResolvedValue({ ...health, protocol: 2 });
+    client.postJob.mockResolvedValue(okBody({ bytesIn: 784_000_000, bytesStreamed: 784_000_000 }));
+    await executor.run(streamJob, { signal: sig() });
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ bytesIn: 784_000_000, bytesStreamed: 784_000_000 }),
+    );
+  });
+});

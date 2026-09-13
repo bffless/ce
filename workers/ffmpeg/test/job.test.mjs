@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { createReadStream, readFileSync } from 'node:fs';
+import { createReadStream, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -501,4 +501,102 @@ test('httpPut destroys the request when the job deadline aborts it', async () =>
   setTimeout(() => ac.abort(), 20);
   await assert.rejects(p, (error) => error.name === 'AbortError');
   server.close();
+});
+
+// --- streamed inputs (#796) --------------------------------------------------
+
+test('substituteArgv resolves a streamed {in:NAME} to its URL; outputs and other inputs stay in scratch', () => {
+  const names = new Set(['a.mov', 'b.png', 'out.mp4']);
+  const streams = new Map([['a.mov', 'https://b/signed?x=1']]);
+  assert.deepEqual(
+    substituteArgv(['-i', '{in:a.mov}', '-i', '{in:b.png}', '{out:out.mp4}'], names, '/s', streams),
+    ['-i', 'https://b/signed?x=1', '-i', '/s/b.png', '/s/out.mp4'],
+  );
+});
+
+test('validateEnvelope accepts stream:true and rejects a non-boolean stream', () => {
+  const streamed = (stream) =>
+    okEnvelope({ inputs: [{ name: 'in.mp4', url: 'https://b/in', stream }] });
+  assert.doesNotThrow(() => validateEnvelope(streamed(true), { allowHttp: false }));
+  assert.throws(
+    () => validateEnvelope(streamed('yes'), { allowHttp: false }),
+    /stream must be a boolean/,
+  );
+});
+
+/** Fake fetch for a streamed input: records every GET; answers a ranged GET with 206 + Content-Range. */
+function rangeFetch({ total = 784_000_000, status = 206, contentRange = true } = {}) {
+  const gets = [];
+  const impl = async (url, init = {}) => {
+    if ((init.method ?? 'GET') === 'PUT') {
+      for await (const chunk of init.body) void chunk;
+      return new Response('', { status: 200 });
+    }
+    gets.push({ url, headers: init.headers ?? {} });
+    const headers = {};
+    if (status === 206 && contentRange) headers['content-range'] = `bytes 0-0/${total}`;
+    if (status === 200) headers['content-length'] = String(total);
+    return new Response(status >= 400 ? 'nope' : 'I', { status, headers });
+  };
+  return { impl, gets };
+}
+
+const streamEnvelope = () =>
+  okEnvelope({ inputs: [{ name: 'in.mp4', url: 'https://b/in?sig=1', stream: true }] });
+
+test('a stream:true input is never downloaded: ffmpeg gets the URL, bytesIn comes from Content-Range', async () => {
+  const sp = fakeSpawn();
+  const f = rangeFetch();
+  let scratchListing = null;
+  const spawnImpl = (bin, argv, opts) => {
+    scratchListing = readdirSync(opts.cwd);
+    return sp.impl(bin, argv, opts);
+  };
+  const res = await runJob(streamEnvelope(), {
+    signal: new AbortController().signal,
+    scratchRoot: await scratchRoot(),
+    fetchImpl: f.impl,
+    uploadImpl: f.impl,
+    spawnImpl,
+  });
+  assert.equal(res.ok, true);
+  assert.deepEqual(sp.calls[0].argv, ['-i', 'https://b/in?sig=1', sp.calls[0].argv[2]]);
+  assert.deepEqual(scratchListing, []); // nothing landed in scratch before ffmpeg ran
+  assert.equal(f.gets.length, 1);
+  assert.equal(f.gets[0].headers.range, 'bytes=0-0'); // a one-byte size probe, not a download
+  assert.equal(res.bytesIn, 784_000_000);
+  assert.equal(res.bytesStreamed, 784_000_000);
+});
+
+test('stream size falls back to a 200 Content-Length, else 0; a downloaded input keeps bytesStreamed 0', async () => {
+  const run = (f, envelope = streamEnvelope()) =>
+    scratchRoot().then((root) =>
+      runJob(envelope, {
+        signal: new AbortController().signal,
+        scratchRoot: root,
+        fetchImpl: f.impl,
+        uploadImpl: f.impl,
+        spawnImpl: fakeSpawn().impl,
+      }),
+    );
+  assert.equal((await run(rangeFetch({ status: 200, total: 42 }))).bytesIn, 42);
+  const unknown = await run(rangeFetch({ contentRange: false }));
+  assert.deepEqual([unknown.ok, unknown.bytesIn, unknown.bytesStreamed], [true, 0, 0]);
+  const downloaded = await run(fakeFetch(), okEnvelope());
+  assert.deepEqual([downloaded.bytesIn, downloaded.bytesStreamed], [5, 0]);
+});
+
+test('a streamed input whose URL answers 403 → INPUT_FETCH_FAILED before anything is spawned', async () => {
+  const sp = fakeSpawn();
+  const f = rangeFetch({ status: 403 });
+  const res = await runJob(streamEnvelope(), {
+    signal: new AbortController().signal,
+    scratchRoot: await scratchRoot(),
+    fetchImpl: f.impl,
+    uploadImpl: f.impl,
+    spawnImpl: sp.impl,
+  });
+  assert.deepEqual([res.ok, res.code], [false, 'INPUT_FETCH_FAILED']);
+  assert.match(res.message, /403/);
+  assert.equal(sp.calls.length, 0);
 });
