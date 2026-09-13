@@ -10,6 +10,12 @@
  * 2. `-fps_mode passthrough`: setpts clears the frame rate on the filter link
  *    and ffmpeg falls back to 25 fps, resampling — dropping over half the
  *    frames of a 60 fps screen recording.
+ * 3. `-video_track_timescale 90000`: left alone, the mp4 muxer derives the
+ *    track timescale from the source's frame timing, and a variable-frame-rate
+ *    screen recording can hand it an absurd one (1/813257295 measured, #798).
+ *    A clip's timescale × duration then overflows the 32-bit sample tables,
+ *    its timestamps wrap, and every later concat inherits a video track
+ *    reporting days. 90000 is the conventional video clock and fits 13 h.
  *
  * Encode profile is the wasm one (libx264 ultrafast / yuv420p / aac /
  * +faststart) so server clips stream-copy-concat with wasm clips and with each
@@ -42,6 +48,8 @@ const ENCODE_PROFILE = (threads: number): string[] => [
   'yuv420p',
   '-c:a',
   'aac',
+  '-video_track_timescale',
+  '90000',
   '-movflags',
   '+faststart',
 ];

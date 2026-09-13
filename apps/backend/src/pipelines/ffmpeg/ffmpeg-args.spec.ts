@@ -64,6 +64,17 @@ describe('buildSliceArgs — single span (fast-seek cut, port of slice.ts)', () 
     expect(args[args.length - 1]).toBe('clip.mp4');
   });
 
+  /**
+   * #798. Unpinned, the mp4 muxer took a VFR screen recording's frame timing as
+   * the track timescale (1/813257295 measured); timescale × a 154 s clip
+   * overflowed the 32-bit sample tables, the clip's timestamps wrapped, and
+   * concat then reported a 104-hour short. Every clip the encode profile writes
+   * must share one sane clock.
+   */
+  it('pins the mp4 video track timescale', () => {
+    expect(argAfter(args, '-video_track_timescale')).toBe('90000');
+  });
+
   it('clamps degenerate spans (start<0, end<start)', () => {
     const a = buildSliceArgs({
       input: 's',
@@ -136,6 +147,7 @@ describe('buildConcatArgs / buildConcatListContent', () => {
     expect(argAfter(args, '-c:v')).toBe('libx264');
     expect(argAfter(args, '-preset')).toBe('ultrafast');
     expect(argAfter(args, '-c:a')).toBe('aac');
+    expect(argAfter(args, '-video_track_timescale')).toBe('90000');
   });
 
   it('list content is one file directive per part', () => {
