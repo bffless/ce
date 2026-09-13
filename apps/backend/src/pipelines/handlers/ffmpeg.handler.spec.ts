@@ -1643,3 +1643,54 @@ describe('untrusted numeric config knobs', () => {
     expect(runner.run).not.toHaveBeenCalled();
   });
 });
+
+describe('stream-hinted inputs (#796)', () => {
+  /** A remote executor double that only records the job it was handed. */
+  const capture = async (config: Record<string, unknown>): Promise<FfmpegJob> => {
+    const remoteRun = jest
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('stop after capture'), { code: 'FFMPEG_FAILED' }));
+    const selector = {
+      pick: jest.fn().mockResolvedValue({ name: 'remote', argvThreads: () => 0, run: remoteRun }),
+      probe: jest.fn(),
+    };
+    const { handler } = createHandler({ selector });
+    await handler.execute(context(), step({ executor: 'remote', ...config }));
+    expect(remoteRun).toHaveBeenCalled();
+    return remoteRun.mock.calls[0][0] as FfmpegJob;
+  };
+
+  it.each([
+    [
+      'slice',
+      { operation: 'slice', input: 'a.mov', output: 'c.mp4', spans: [{ start: 0, end: 5 }] },
+    ],
+    ['extract_audio', { operation: 'extract_audio', input: 'a.mov', output: 'a.wav' }],
+    ['frames', { operation: 'frames', input: 'a.mov', outputPrefix: 'shots', times: [1, 2] }],
+    [
+      'frames + tile (contact sheet)',
+      {
+        operation: 'frames',
+        input: 'a.mov',
+        outputPrefix: 'shots',
+        times: [1, 2],
+        tile: { perSheet: 2 },
+      },
+    ],
+  ])('%s marks its single source input stream: true', async (_name, config) => {
+    const job = await capture(config);
+    expect(job.inputs).toHaveLength(1);
+    expect(job.inputs[0]).toMatchObject({ stream: true });
+  });
+
+  it('concat keeps downloading (no input is stream-hinted)', async () => {
+    const job = await capture({ operation: 'concat', inputs: ['a.mp4', 'b.mp4'], output: 'f.mp4' });
+    expect(job.inputs.length).toBeGreaterThan(1);
+    expect(job.inputs.some((i) => i.stream)).toBe(false);
+  });
+
+  it('probe is not stream-hinted either', async () => {
+    const job = await capture({ operation: 'probe', input: 'a.mov' });
+    expect(job.inputs[0].stream).toBeUndefined();
+  });
+});

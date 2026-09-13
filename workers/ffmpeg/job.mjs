@@ -1,6 +1,7 @@
 /**
  * Job execution for the BFFless ffmpeg Worker: fetch signed-URL inputs into a scratch
- * dir, substitute `{in|out|file:NAME}` placeholders, spawn the argv CE authored, then
+ * dir (or, for `stream: true` inputs, leave them at their URL), substitute
+ * `{in|out|file:NAME}` placeholders, spawn the argv CE authored, then
  * PUT the outputs back — and never anything else. See
  * docs/adr/0004-remote-ffmpeg-worker-is-a-dumb-argv-runner-fed-by-signed-urls.md.
  *
@@ -45,13 +46,27 @@ function assertSafeName(name) {
   return name;
 }
 
-export function substituteArgv(argv, names, scratchDir) {
+/**
+ * The envelope features this build understands, reported on `/health` so CE can
+ * decide what to send. Bump it when the Worker learns a new envelope field.
+ *   1 — download every input (implicit: Workers before `protocol` existed)
+ *   2 — `inputs[].stream: true`: not downloaded, `{in:NAME}` resolves to the signed URL (#796)
+ */
+export const WORKER_PROTOCOL = 2;
+
+/**
+ * `streamUrls` (name → signed URL) holds the streamed inputs: their `{in:NAME}`
+ * becomes the URL itself. Everything else resolves to `<scratch>/NAME`. Any input
+ * options a streamed input needs (`-reconnect …`) are already in argv — CE wrote them.
+ */
+export function substituteArgv(argv, names, scratchDir, streamUrls = new Map()) {
   return argv.map((token) => {
     const match = PLACEHOLDER.exec(token);
     if (!match) return token;
     const name = match[2];
     assertSafeName(name);
     if (!names.has(name)) throw new JobError('BAD_REQUEST', `unknown placeholder ${token}`);
+    if (match[1] === 'in' && streamUrls.has(name)) return streamUrls.get(name);
     return path.join(scratchDir, name);
   });
 }
@@ -96,7 +111,12 @@ export function validateEnvelope(envelope, { allowHttp }) {
     if (names.has(entry.name)) throw new JobError('BAD_REQUEST', `duplicate name "${entry.name}"`);
     names.add(entry.name);
   }
-  for (const input of inputs) assertUrl(input.url, allowHttp, `input "${input.name}"`);
+  for (const input of inputs) {
+    assertUrl(input.url, allowHttp, `input "${input.name}"`);
+    if (input.stream !== undefined && typeof input.stream !== 'boolean') {
+      throw new JobError('BAD_REQUEST', `input "${input.name}" stream must be a boolean`);
+    }
+  }
   for (const output of outputs) {
     assertUrl(output.url, allowHttp, `output "${output.name}"`);
     if (typeof output.contentType !== 'string' || output.contentType === '') {
@@ -174,6 +194,40 @@ async function downloadInput(input, dest, fetchImpl, signal) {
   if (res.body) await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
   else await writeFile(dest, '');
   return (await stat(dest)).size;
+}
+
+/**
+ * A streamed input is never downloaded, but its size is still worth reporting
+ * (a 784 MB `bytesIn` is what diagnosed #796) and a bad URL is better caught
+ * here as INPUT_FETCH_FAILED than as an opaque ffmpeg exit. One ranged GET for a
+ * single byte — not HEAD, because a signed GET URL is signed for GET only — and
+ * the body is cancelled unread, so a server that ignores Range costs nothing.
+ * Size: the Content-Range total, else a full (200) response's Content-Length, else 0.
+ */
+async function probeStreamInput(input, fetchImpl, signal) {
+  let res;
+  try {
+    res = await fetchImpl(input.url, { headers: { range: 'bytes=0-0' }, signal });
+  } catch (error) {
+    if (signal.aborted) throw error;
+    throw new JobError(
+      'INPUT_FETCH_FAILED',
+      `input "${input.name}" fetch failed: ${error.message}`,
+    );
+  }
+  await res.body?.cancel().catch(() => {});
+  if (!res.ok)
+    throw new JobError(
+      'INPUT_FETCH_FAILED',
+      `input "${input.name}" fetch failed: HTTP ${res.status}`,
+    );
+  const total = /\/(\d+)\s*$/.exec(res.headers.get('content-range') ?? '');
+  if (total) return Number(total[1]);
+  if (res.status === 200) {
+    const length = Number(res.headers.get('content-length'));
+    if (Number.isFinite(length) && length >= 0) return length;
+  }
+  return 0;
 }
 
 /** Response bodies only ever appear in an error message — keep them log-sized. */
@@ -287,6 +341,7 @@ export async function runJob(
   let stdout = '';
   let stderrTail = '';
   let bytesIn = 0;
+  let bytesStreamed = 0;
   let bytesOut = 0;
 
   const done = (extra) => ({
@@ -297,6 +352,7 @@ export async function runJob(
     stderrTail,
     outputs: outputResults,
     bytesIn,
+    bytesStreamed,
     bytesOut,
     timings: { ...timings, totalMs: Date.now() - startedAt },
     worker: { version, ffmpeg: ffmpegVersion },
@@ -334,10 +390,21 @@ export async function runJob(
     const outputs = envelope.outputs ?? [];
     const files = envelope.files ?? [];
     const names = new Set([...inputs, ...outputs, ...files].map((e) => e.name));
+    // Streamed inputs stay where they are: ffmpeg reads the signed URL itself, so the
+    // source never lands in scratch (in-memory on Cloud Run — #796).
+    const streamUrls = new Map(
+      inputs.filter((i) => i.stream === true).map((i) => [assertSafeName(i.name), i.url]),
+    );
 
     const inStart = Date.now();
     try {
       for (const input of inputs) {
+        if (streamUrls.has(input.name)) {
+          const size = await probeStreamInput(input, fetchImpl, jobSignal);
+          bytesIn += size;
+          bytesStreamed += size;
+          continue;
+        }
         bytesIn += await downloadInput(
           input,
           path.join(scratch, assertSafeName(input.name)),
@@ -362,7 +429,7 @@ export async function runJob(
           commandResults.push({ id: cmd.id, ran: false, exitCode: null });
           continue;
         }
-        const argv = substituteArgv(cmd.argv, names, scratch);
+        const argv = substituteArgv(cmd.argv, names, scratch, streamUrls);
         const bin = cmd.kind === 'ffprobe' ? ffprobeBin : ffmpegBin;
         const perCommand =
           cmd.timeoutSeconds > 0

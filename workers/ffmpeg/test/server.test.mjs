@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../server.mjs';
+import { WORKER_PROTOCOL } from '../job.mjs';
 
 const envelope = {
   v: 1,
@@ -144,6 +145,8 @@ test('POST /jobs runs the job and returns its result, logging one line', async (
       code: null,
       totalMs: 6,
       bytesIn: 5,
+      // A pre-#796 runJob result has no bytesStreamed; the log line reports 0, never undefined.
+      bytesStreamed: 0,
       bytesOut: 3,
     });
   } finally {
@@ -230,6 +233,17 @@ test('unknown routes are 404', async () => {
   try {
     assert.equal((await fetch(`${wk.url}/`)).status, 404);
     assert.equal((await fetch(`${wk.url}/jobs`)).status, 404);
+  } finally {
+    await wk.stop();
+  }
+});
+
+test('GET /health reports the envelope protocol CE gates streamed inputs on (#796)', async () => {
+  const wk = await boot({ ffmpeg: 'ffmpeg version 6.1.2', runJob: async () => result() });
+  try {
+    const body = await (await fetch(`${wk.url}/health`)).json();
+    assert.equal(body.protocol, WORKER_PROTOCOL);
+    assert.ok(WORKER_PROTOCOL >= 2);
   } finally {
     await wk.stop();
   }

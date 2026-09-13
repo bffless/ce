@@ -15,7 +15,12 @@ import type {
   FfmpegJob,
   FfmpegJobResult,
 } from '../ffmpeg-executor.interface';
-import { buildEnvelope, type WorkerHealth, type WorkerResponse } from './envelope';
+import {
+  buildEnvelope,
+  workerSupportsStreamInputs,
+  type WorkerHealth,
+  type WorkerResponse,
+} from './envelope';
 import type { AuthHeaderProvider } from '../../../../remote-connections/auth/id-token';
 import { authProviderFor } from '../../../../remote-connections/remote-client';
 import { InflightFuse } from '../../../../remote-connections/fuse';
@@ -230,6 +235,12 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       throw error;
     }
     try {
+      // #796: stream-hinted inputs are only streamed by a Worker that says it can —
+      // an older one would download them and then choke on -reconnect against a
+      // local path. The answer rides the same 60 s health cache ready() fills.
+      const streamInputs =
+        job.inputs.some((input) => input.stream === true) &&
+        workerSupportsStreamInputs(await this.workerHealth(env));
       const envelope = await buildEnvelope(
         job,
         {
@@ -238,6 +249,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
             this.storageAdapter.getPresignedUploadUrl!(key, ttl, maxBytes),
         },
         env,
+        { streamInputs },
       );
 
       let response: WorkerResponse;
@@ -320,6 +332,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
         worker: response.worker,
         timings: result.timings,
         bytesIn: result.bytesIn,
+        bytesStreamed: response.bytesStreamed ?? 0,
         bytesOut: result.bytesOut,
         commands: result.commands.map((c) => `${c.id}:${c.exitCode}`),
       });
@@ -400,6 +413,17 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, reason: `worker unreachable: ${message}` };
     }
+  }
+
+  /**
+   * The live Worker's /health answer for a job, from (or into) the shared readiness
+   * cache. Unreachable → undefined, which callers must treat as "no new features":
+   * the job POST that follows reports the real transport fault.
+   */
+  private async workerHealth(env: FfmpegEnvConfig): Promise<WorkerHealth | undefined> {
+    const entry = this.cacheEntry(env);
+    entry.health ??= await this.probeHealth(env);
+    return entry.health.ok ? entry.health.health : undefined;
   }
 
   /** An entry nobody else sees — for Test connection and candidate configs. */

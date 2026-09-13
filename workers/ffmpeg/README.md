@@ -37,7 +37,11 @@ coupling.
 ```
 
 `{in:NAME}`, `{out:NAME}` and `{file:NAME}` (whole tokens only) resolve to `<scratch>/NAME`;
-every other token is passed verbatim. `fallbackFor: "x"` runs the command only if `x`
+every other token is passed verbatim. An input marked `"stream": true` is **not downloaded**:
+its `{in:NAME}` resolves to the signed URL itself and ffmpeg reads it with range requests. The
+Worker only makes a one-byte ranged GET first, to check the URL works and to learn the input's
+size. CE writes any input options a streamed input needs (`-reconnect …`) into argv itself, and
+it sends `stream` only to Workers whose `/health` reports `protocol >= 2`. `fallbackFor: "x"` runs the command only if `x`
 exited non-zero. Response (always `200` — the _request_ succeeded even when the job did not):
 
 ```jsonc
@@ -60,8 +64,13 @@ exited non-zero. Response (always `200` — the _request_ succeeded even when th
 (caller disconnected — CE never sees it, its request is gone). One job at a time per
 process: a second concurrent `POST /jobs` gets `503 {"code":"BUSY"}`.
 
-`GET /health` → `{ ok, version, ffmpeg, ops:["ffmpeg","ffprobe"], uptimeS }`, `503` when
-the ffmpeg binary is missing. `/healthz` is served as an alias, but CE probes `/health`:
+`bytesIn` counts every input, streamed or downloaded; `bytesStreamed` is the part that was read in
+place (a streamed input's size comes from the size-probe response).
+
+`GET /health` → `{ ok, version, ffmpeg, ops:["ffmpeg","ffprobe"], uptimeS, protocol }`, `503` when
+the ffmpeg binary is missing. `protocol` is the set of envelope features this build accepts
+(`2` = streamed inputs). It belongs to the Worker, not to the image `version`, which is a CE tag
+and not always semver. `/healthz` is served as an alias, but CE probes `/health`:
 on Cloud Run's `*.run.app` domain Google's front door intercepts the literal `/healthz`
 (HTML 404 before IAM ever sees the request), so it cannot be the readiness path.
 
@@ -108,6 +117,28 @@ whole body has landed and `fetch` gives up after 300 s.
 
 `SIGTERM` stops new requests and lets the in-flight job finish; no `--no-cpu-throttling` is
 needed because the request stays open.
+
+#### Memory sizing: scratch is in-memory on Cloud Run
+
+Cloud Run's writable filesystem is backed by RAM, so every byte in the scratch dir counts
+against `--memory`. Size the service for **downloaded inputs + outputs + ffmpeg's decode
+memory**. A job that overshoots is SIGKILLed mid-encode, and CE sees a dropped connection
+(`FFMPEG_EXECUTOR_UNAVAILABLE`), not a busy Worker.
+
+- **Streamed inputs don't count.** With a CE that sends them and a Worker reporting
+  `protocol >= 2`, slice, extract-audio and frames/contact-sheet read their source straight
+  from the signed URL. Their peak is decode + outputs, whatever the upload size. A contact sheet
+  reopens the URL once per still, which trades some latency for that memory.
+- **Downloaded inputs still count in full.** That covers concat (its parts are copied into
+  scratch) and anything sent to an older Worker.
+- **Outputs always land in scratch** before upload (a long slice's `clip.mp4`, its `clip.wav`).
+
+If outputs or concat inputs outgrow the memory you're willing to pay for, mount a disk-backed
+volume and point `WORKER_SCRATCH_DIR` at it. On Cloud Run that means a Cloud Storage FUSE or
+NFS volume mount, e.g.
+`--add-volume name=scratch,type=cloud-storage,bucket=BUCKET --add-volume-mount volume=scratch,mount-path=/scratch --set-env-vars WORKER_SCRATCH_DIR=/scratch`.
+Every job dir is still wiped in `finally`, but a FUSE-backed scratch is slower for the random
+access ffmpeg does on its outputs, so prefer memory where it fits.
 
 ## Security
 
