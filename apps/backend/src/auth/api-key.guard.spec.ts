@@ -272,5 +272,74 @@ describe('ApiKeyGuard', () => {
         expect(mockResolveAppToken).not.toHaveBeenCalled();
       });
     });
+
+    describe('Bearer API keys (Authorization: Bearer wsa_…, #802)', () => {
+      const keyRow = {
+        id: 'key-1',
+        key: 'hashed-key',
+        userId: 'user-1',
+        projectId: 'p-1',
+        expiresAt: null,
+        lastUsedAt: null,
+      };
+
+      beforeEach(() => {
+        jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+        mockDb.where.mockResolvedValue(undefined);
+      });
+
+      it('authenticates a wsa_ bearer exactly as X-API-Key would', async () => {
+        mockRequest.headers.authorization = 'Bearer wsa_secret';
+        mockDb.from.mockResolvedValue([keyRow]);
+        (bcrypt.compare as jest.Mock).mockImplementation((plain) =>
+          Promise.resolve(plain === 'wsa_secret'),
+        );
+
+        await expect(guard.canActivate(mockExecutionContext)).resolves.toBe(true);
+        expect(mockRequest.user).toEqual({
+          id: 'user-1',
+          apiKeyId: 'key-1',
+          apiKeyProjectId: 'p-1',
+          role: 'user',
+        });
+        expect(bcrypt.compare).toHaveBeenCalledWith('wsa_secret', 'hashed-key');
+        expect(mockResolveAppToken).not.toHaveBeenCalled();
+        expect(mockGetSession).not.toHaveBeenCalled();
+      });
+
+      it('rejects an unknown wsa_ bearer with 401, not a session fallback', async () => {
+        mockRequest.headers.authorization = 'Bearer wsa_unknown';
+        mockDb.from.mockResolvedValue([keyRow]);
+        (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('Invalid API key'),
+        );
+        expect(mockGetSession).not.toHaveBeenCalled();
+      });
+
+      it('never bcrypt-scans a bearer that is not an API key', async () => {
+        mockRequest.headers.authorization = 'Bearer eyJhbGciOi.jwt.sig';
+        mockResolveAppToken.mockResolvedValueOnce(null);
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new UnauthorizedException('unauthorised'),
+        );
+        expect(mockDb.from).not.toHaveBeenCalled();
+        expect(bcrypt.compare).not.toHaveBeenCalled();
+        expect(mockGetSession).toHaveBeenCalled();
+      });
+
+      it('X-API-Key still wins over a wsa_ bearer', async () => {
+        mockRequest.headers['x-api-key'] = 'wsa_header';
+        mockRequest.headers.authorization = 'Bearer wsa_bearer';
+        mockDb.from.mockResolvedValue([keyRow]);
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+        await expect(guard.canActivate(mockExecutionContext)).resolves.toBe(true);
+        expect(bcrypt.compare).toHaveBeenCalledWith('wsa_header', 'hashed-key');
+        expect(bcrypt.compare).not.toHaveBeenCalledWith('wsa_bearer', expect.anything());
+      });
+    });
   });
 });

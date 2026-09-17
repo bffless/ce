@@ -19,6 +19,7 @@ import {
 } from './api-keys.dto';
 import { ProjectsService } from '../projects/projects.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { API_KEY_PREFIX } from '../auth/api-key-bearer.util';
 
 // Type for API key with joined project data
 interface ApiKeyWithProject extends ApiKey {
@@ -30,7 +31,6 @@ interface ApiKeyWithProject extends ApiKey {
 }
 
 const BCRYPT_ROUNDS = 10;
-const API_KEY_PREFIX = 'wsa_';
 const API_KEY_LENGTH = 32; // 32 bytes = 64 hex characters
 
 @Injectable()
