@@ -7,10 +7,13 @@ import { db } from '../db/client';
 import { apiKeys, users } from '../db/schema';
 import { IS_PUBLIC_KEY, SESSION_401_NO_SESSION, sessionErrorMessage } from './session-auth.guard';
 import { requestUserFromAppToken, resolveAppToken } from './app-token.util';
+import { bearerApiKey } from './api-key-bearer.util';
 
 /**
  * API Key authentication guard with session fallback
- * Used for GitHub Actions and other programmatic access via X-API-Key header
+ * Used for GitHub Actions and other programmatic access via X-API-Key header.
+ * The same key is also accepted as `Authorization: Bearer wsa_…` — the MCP
+ * convention, for clients that can only send a bearer (#802).
  * Falls back to session authentication if no API key is present
  */
 @Injectable()
@@ -30,13 +33,20 @@ export class ApiKeyGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
-    const apiKey = request.headers['x-api-key'];
+    const headerKey = request.headers['x-api-key'];
+    // Precedence: X-API-Key → Bearer wsa_ (an API key) → Bearer bfat_ (an app
+    // token) → session. Only the `wsa_` prefix reaches the bcrypt compare below;
+    // any other bearer (a SuperTokens JWT, a third-party token) falls through.
+    const apiKey =
+      headerKey && typeof headerKey === 'string'
+        ? headerKey
+        : bearerApiKey(request.headers.authorization);
 
     // If no API key, try a Bearer app token, then fall back to session authentication.
     // A token is a project-fenced pseudo-key here (role pinned as keys are, never
     // elevated) — see app-token.util `requestUserFromAppToken`. Any other bearer
     // falls through exactly as before.
-    if (!apiKey || typeof apiKey !== 'string') {
+    if (!apiKey) {
       const resolved = await resolveAppToken(request.headers.authorization);
       if (resolved) {
         request.user = requestUserFromAppToken(resolved, { pinRoleLikeApiKey: true });
