@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { appTokens, users } from '../db/schema';
+import { bearerWithPrefix } from './api-key-bearer.util';
 
 /**
  * App tokens (`Authorization: Bearer bfat_…`) — the one resolver every call
@@ -58,11 +59,7 @@ export interface AppTokenRequestUser {
  * SuperTokens JWT, a third-party token) must keep falling through untouched.
  */
 export function bearerAppToken(authorization: string | string[] | undefined): string | null {
-  const header = Array.isArray(authorization) ? authorization[0] : authorization;
-  if (typeof header !== 'string') return null;
-  const match = header.match(/^\s*Bearer\s+(\S+)\s*$/i);
-  if (!match) return null;
-  return match[1].startsWith(APP_TOKEN_PREFIX) ? match[1] : null;
+  return bearerWithPrefix(authorization, APP_TOKEN_PREFIX);
 }
 
 /** sha256 hex. Deterministic on purpose: the token has 256 bits of entropy; bcrypt is for passwords. */

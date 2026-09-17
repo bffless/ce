@@ -340,6 +340,16 @@ describe('ApiKeyGuard', () => {
         expect(bcrypt.compare).toHaveBeenCalledWith('wsa_header', 'hashed-key');
         expect(bcrypt.compare).not.toHaveBeenCalledWith('wsa_bearer', expect.anything());
       });
+
+      it('falls to the wsa_ bearer when X-API-Key is not a single string', async () => {
+        mockRequest.headers['x-api-key'] = ['wsa_one', 'wsa_two'];
+        mockRequest.headers.authorization = 'Bearer wsa_bearer';
+        mockDb.from.mockResolvedValue([keyRow]);
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+        await expect(guard.canActivate(mockExecutionContext)).resolves.toBe(true);
+        expect(bcrypt.compare).toHaveBeenCalledWith('wsa_bearer', 'hashed-key');
+      });
     });
   });
 });
