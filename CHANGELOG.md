@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.61](https://github.com/bffless/ce/compare/v0.4.60...v0.4.61) (2026-09-17)
+
+
+### Added
+
+* **auth:** accept API keys as Authorization: Bearer wsa_… on the admin API ([#803](https://github.com/bffless/ce/issues/803)) ([347e1c2](https://github.com/bffless/ce/commit/347e1c23dc7cf904ba3d76706e0f2c0167ebfac5))
+
 ## [0.4.60](https://github.com/bffless/ce/compare/v0.4.59...v0.4.60) (2026-09-13)
 
 ### Added
