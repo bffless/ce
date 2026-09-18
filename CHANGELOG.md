@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.61](https://github.com/bffless/ce/compare/v0.4.60...v0.4.61) (2026-09-17)
 
-
 ### Added
-
-* **auth:** accept API keys as Authorization: Bearer wsa_… on the admin API ([#803](https://github.com/bffless/ce/issues/803)) ([347e1c2](https://github.com/bffless/ce/commit/347e1c23dc7cf904ba3d76706e0f2c0167ebfac5))
+- auth: accept API keys as Authorization: Bearer wsa_… on the admin API ([#803](https://github.com/bffless/ce/pull/803), thanks @toshimoto821)
 
 ## [0.4.60](https://github.com/bffless/ce/compare/v0.4.59...v0.4.60) (2026-09-13)
 
