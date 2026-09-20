@@ -164,11 +164,16 @@ export class HttpRequestHandler implements StepHandler<HttpRequestHandlerConfig>
     // send a body: a bodyless GET carrying `Content-Type: application/json` is
     // semantically wrong and strict upstreams (e.g. nginx) reject it with a
     // 415 Unsupported Media Type. A caller can still set its own Content-Type
-    // via `config.headers` below.
+    // via `config.headers` (or forward one via `config.forwardHeaders`) below.
+    //
+    // Every key in this object is lower-case, the default included: forwarded
+    // and custom headers are stored lower-cased, so a default under
+    // `Content-Type` would survive next to a caller's `content-type` and
+    // `fetch` would join the two into one invalid comma-separated value.
     const headers: Record<string, string> = {};
     const willSendBody = method !== 'GET' && config.body !== undefined;
     if (willSendBody) {
-      headers['Content-Type'] = 'application/json';
+      headers['content-type'] = 'application/json';
     }
 
     // Forward specific headers from original request

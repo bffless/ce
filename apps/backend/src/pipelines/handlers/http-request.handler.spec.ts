@@ -250,6 +250,13 @@ describe('HttpRequestHandler', () => {
       return (mockFetch.mock.calls[0][1] as { headers: Record<string, string> }).headers;
     }
 
+    // What the upstream receives. `fetch` normalises the plain object through
+    // `Headers`, which joins keys differing only in case into one
+    // comma-separated value — so assert on that, not on a particular key casing.
+    function wireContentType(): string | null {
+      return new Headers(sentHeaders()).get('content-type');
+    }
+
     it('omits Content-Type on a bodyless GET (strict upstreams 415 otherwise)', async () => {
       mockFetch.mockResolvedValue(
         makeFetchResponse({ status: 200, body: '<rss/>', isJson: false }),
@@ -257,7 +264,18 @@ describe('HttpRequestHandler', () => {
 
       await handler.execute(makeContext(), makeStep({ url: 'https://example.com/rss' }));
 
-      expect(sentHeaders()['Content-Type']).toBeUndefined();
+      expect(wireContentType()).toBeNull();
+    });
+
+    it('omits Content-Type on a bodyless POST', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: { ok: true } }));
+
+      await handler.execute(
+        makeContext(),
+        makeStep({ url: 'https://example.com/ping', method: 'POST' }),
+      );
+
+      expect(wireContentType()).toBeNull();
     });
 
     it('sends Content-Type: application/json when a body is present', async () => {
@@ -268,10 +286,10 @@ describe('HttpRequestHandler', () => {
         makeStep({ url: 'https://example.com/post', method: 'POST', body: { a: 1 } }),
       );
 
-      expect(sentHeaders()['Content-Type']).toBe('application/json');
+      expect(wireContentType()).toBe('application/json');
     });
 
-    it('lets a caller override Content-Type via config.headers', async () => {
+    it('keeps other custom headers from disturbing the Content-Type decision', async () => {
       mockFetch.mockResolvedValue(
         makeFetchResponse({ status: 200, body: '<rss/>', isJson: false }),
       );
@@ -285,7 +303,80 @@ describe('HttpRequestHandler', () => {
       );
 
       expect(sentHeaders()['accept']).toBe('application/rss+xml');
-      expect(sentHeaders()['Content-Type']).toBeUndefined();
+      expect(wireContentType()).toBeNull();
+    });
+
+    it('replaces the default with a custom Content-Type from config.headers', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: { ok: true } }));
+
+      await handler.execute(
+        makeContext({ stepOutputs: { prep: { form: 'data=%5Bout%3Ajson%5D' } } }),
+        makeStep({
+          url: 'https://example.com/interpreter',
+          method: 'POST',
+          headers: { 'Content-Type': "'application/x-www-form-urlencoded'" },
+          body: 'steps.prep.form',
+        }),
+      );
+
+      // Exactly one value on the wire, not "application/json, application/x-www-…".
+      expect(wireContentType()).toBe('application/x-www-form-urlencoded');
+      const contentTypeKeys = Object.keys(sentHeaders()).filter(
+        (key) => key.toLowerCase() === 'content-type',
+      );
+      expect(contentTypeKeys).toEqual(['content-type']);
+      // A string body is passed through as-is, not JSON-encoded.
+      expect((mockFetch.mock.calls[0][1] as { body: string }).body).toBe('data=%5Bout%3Ajson%5D');
+    });
+
+    it('replaces the default whatever the casing of the custom header name', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: { ok: true } }));
+
+      await handler.execute(
+        makeContext(),
+        makeStep({
+          url: 'https://example.com/xml',
+          method: 'POST',
+          headers: { 'content-type': "'application/xml'" },
+          body: "'<a/>'",
+        }),
+      );
+
+      expect(wireContentType()).toBe('application/xml');
+    });
+
+    it('replaces the default with a Content-Type forwarded via forwardHeaders', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: { ok: true } }));
+
+      await handler.execute(
+        makeContext({
+          request: { headers: { 'content-type': 'text/plain' } } as unknown as Request,
+        }),
+        makeStep({
+          url: 'https://example.com/echo',
+          method: 'POST',
+          forwardHeaders: ['Content-Type'],
+          body: "'hello'",
+        }),
+      );
+
+      expect(wireContentType()).toBe('text/plain');
+    });
+
+    it('keeps the JSON default when forwardHeaders names a header the request lacks', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: { ok: true } }));
+
+      await handler.execute(
+        makeContext(),
+        makeStep({
+          url: 'https://example.com/post',
+          method: 'POST',
+          forwardHeaders: ['content-type'],
+          body: { a: 1 },
+        }),
+      );
+
+      expect(wireContentType()).toBe('application/json');
     });
   });
 });
