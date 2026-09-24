@@ -663,7 +663,7 @@ export interface ImageConvertHandlerConfig extends BaseHandlerConfig {
 
 // step-handler.interface.ts — this TSDoc is the authoritative handler reference
 // (CE has no per-handler doc pages; agents and humans read this).
-export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat' | 'frames';
+export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat' | 'frames' | 'card';
 
 /** One kept span of source footage, in source seconds. Values may be literals or expressions. */
 export interface FfmpegSpan {
@@ -890,7 +890,7 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   inputs?: string[] | string;
   /** Kept spans for slice: an array (bounds may be BARE expressions) or a BARE expression resolving to one — not `{{...}}`. */
   spans?: FfmpegSpan[] | string;
-  /** Destination path, uploads-relative. TEMPLATE. Required for extract_audio / slice / concat; frames writes under `outputPrefix` instead, and probe writes nothing. */
+  /** Destination path, uploads-relative. TEMPLATE. Required for extract_audio / slice / concat / card; frames writes under `outputPrefix` instead, and probe writes nothing. */
   output?: string;
   /** slice only: also emit the clip's 16 kHz mono WAV to this uploads-relative path. TEMPLATE. Setting it adds an `audio` sub-object to the step output. */
   audioOutput?: string;
@@ -900,14 +900,28 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   outputPrefix?: string;
   /** frames: capture times in source seconds — an array (entries may be BARE expressions) or a BARE expression resolving to one. NOT `{{...}}`: a braced value comes back as a literal string and fails. */
   times?: Array<number | string> | string;
-  /** frames: output height in px, width follows the aspect ratio. Default 720. LITERAL number (no expression of either form); positive integer, no upper bound. */
+  /** frames: output height in px, width follows the aspect ratio. Default 720. card: the segment's height; default the image's own. LITERAL number (no expression of either form); positive integer, no upper bound. */
   height?: number;
   /** frames: jpeg quality of each still, ffmpeg -q:v (2 = best, 31 = worst). Default 3. LITERAL number; positive integer, no upper bound. A tiled sheet is always -q:v 3. */
   quality?: number;
-  /** frames: burn one line of text into every still. Omit for clean stills. */
+  /** frames: burn one line of text into every still. slice: draw one line (a single `text` string) on the whole cut. Omit for clean pictures. */
   draw?: FfmpegDrawConfig;
   /** frames: tile the stills into contact sheets instead of uploading them individually. Omit to upload each still. */
   tile?: FfmpegTileConfig;
+  /**
+   * slice (one span only) and card: an audio object, uploads-relative, laid over the picture.
+   * TEMPLATE. CE probes it for its length first: the output runs `max(span, voice)` (slice)
+   * or `voice + 0.5 s` (card), the picture holding its last frame under the rest of the line.
+   */
+  audio?: string;
+  /** slice with `audio`: the cut's own audio under the voice, 0 (silent) to 1 (as recorded). Default 0.25. LITERAL number. */
+  original?: number;
+  /** card: the image to hold, uploads-relative. TEMPLATE. Required. */
+  image?: string;
+  /** card without `audio`: how long to hold the image. Default 4. LITERAL positive number. Ignored when `audio` sets the length. */
+  seconds?: number;
+  /** card: the segment's width; with `height` the image is fitted and letterboxed, alone the height follows. Default the image's own. LITERAL positive integer. */
+  width?: number;
   /**
    * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
    * `{{expression}}` resolving to one — a TEMPLATE, like the path fields.

@@ -106,28 +106,164 @@ export function buildSliceArgs(opts: {
   spans: Span[];
   threads: number;
   audioFades?: boolean;
+  /** A voice laid over the cut (single span only) — see `SliceNarration`. */
+  narration?: SliceNarration;
+  /** One line drawn on the whole cut, the same fence as a still's overlay. */
+  overlay?: FrameOverlay;
 }): string[] {
   const spans = opts.spans.map((v) => {
     const start = Math.max(0, v.start);
     return { start, end: Math.max(start, v.end) };
   });
-  const graph = spanFilterGraph(spans, opts.audioFades === true);
+  const narration = opts.narration;
+  if (narration !== undefined && spans.length !== 1) {
+    throw new Error(`a narrated slice takes exactly one span, got ${spans.length}`);
+  }
+  let graph = spanFilterGraph(spans, opts.audioFades === true);
+  let video = '[vout]';
+  let audio = '[aout]';
+  const extraInputs: string[] = [];
+  let outputLength: string[] = spans.length === 1 ? ['-to', secs(spans[0].end)] : [];
+  let profile = ENCODE_PROFILE(opts.threads);
+  if (narration !== undefined) {
+    const span = spans[0].end - spans[0].start;
+    const total = narrationTotal(span, narration.seconds);
+    const pad = Math.max(0, total - span);
+    // The picture holds its last frame under the rest of the line; both audio
+    // streams are padded to the same length so `amix` (duration=first) never
+    // has to guess, and `-t` pins the output — no `-shortest` heuristics.
+    if (pad > 0) {
+      graph += `;${video}tpad=stop_mode=clone:stop_duration=${secs(pad)}[vpad]`;
+      video = '[vpad]';
+    }
+    graph +=
+      `;${audio}volume=${narrationLevel(narration.original)},apad=whole_dur=${secs(total)}[abed]` +
+      `;[1:a]aresample=${NARRATION_SAMPLE_RATE},apad=whole_dur=${secs(total)}[avoice]` +
+      `;[abed][avoice]amix=inputs=2:duration=first:normalize=0[amix]`;
+    audio = '[amix]';
+    extraInputs.push('-i', narration.input);
+    outputLength = ['-t', secs(total)];
+    profile = [...profile, ...NARRATION_AUDIO];
+  }
+  if (opts.overlay !== undefined) {
+    graph += `;${video}${drawtextFilter(opts.overlay)}[vdraw]`;
+    video = '[vdraw]';
+  }
   const inputArgs =
     spans.length === 1
-      ? ['-ss', secs(spans[0].start), '-copyts', '-i', opts.input, '-to', secs(spans[0].end)]
-      : ['-i', opts.input];
+      ? ['-ss', secs(spans[0].start), '-copyts', '-i', opts.input, ...extraInputs]
+      : ['-i', opts.input, ...extraInputs];
   return [
     ...inputArgs,
+    ...(narration === undefined ? outputLength : []),
     '-filter_complex',
     graph,
     '-map',
-    '[vout]',
+    video,
     '-map',
-    '[aout]',
-    ...ENCODE_PROFILE(opts.threads),
+    audio,
+    ...(narration === undefined ? [] : outputLength),
+    ...profile,
     opts.output,
   ];
 }
+
+/**
+ * A voice laid over a cut (the `audio` of a `slice` step). The handler probes
+ * the voice for `seconds` before building the argv, so every length here is a
+ * number ffmpeg is told, never one it has to discover: the output is
+ * `max(span, seconds)` long, the picture holds its last frame under the rest
+ * of the line, and the cut's own audio sits under the voice at `original`.
+ */
+export interface SliceNarration {
+  /** The voice file, as an `{in:...}` placeholder. */
+  input: string;
+  /** The voice's length in seconds, from a probe. */
+  seconds: number;
+  /** The cut's own audio under the voice, 0 (silent) to 1 (as recorded). */
+  original: number;
+}
+
+/** Narrated cuts and cards share one audio layout, so `concat` can stream-copy them together. */
+const NARRATION_SAMPLE_RATE = 48000;
+const NARRATION_AUDIO = ['-ar', String(NARRATION_SAMPLE_RATE), '-ac', '2'];
+
+/** How long a narrated cut is: the span, or the voice if it runs longer. */
+export function narrationTotal(spanSeconds: number, voiceSeconds: number): number {
+  return Number(Math.max(spanSeconds, Math.max(0, voiceSeconds)).toFixed(3));
+}
+
+/** `original` is a level, interpolated unescaped into the graph, so it is range-checked here. */
+function narrationLevel(original: number): string {
+  if (typeof original !== 'number' || !Number.isFinite(original) || original < 0 || original > 1) {
+    throw new Error(`narration original must be a number from 0 to 1, got: ${String(original)}`);
+  }
+  return String(original);
+}
+
+/**
+ * A card: one image held as a video segment at the shared encode profile,
+ * `seconds` long, under a voice (`audio`) or silence. With both `width` and
+ * `height` the image is fitted and letterboxed; with one, the other follows the
+ * aspect ratio; with neither, the image's own size (made even for yuv420p). A
+ * silent card still writes an audio track, so `concat` sees uniform parts.
+ */
+export function buildCardArgs(o: {
+  image: string;
+  output: string;
+  seconds: number;
+  audio?: string;
+  width?: number;
+  height?: number;
+  threads: number;
+}): string[] {
+  if (!Number.isFinite(o.seconds) || o.seconds <= 0) {
+    throw new Error(`card seconds must be a positive number, got: ${String(o.seconds)}`);
+  }
+  const dims = [o.width, o.height].map((d) => {
+    if (d === undefined) return undefined;
+    if (!Number.isInteger(d) || d <= 0)
+      throw new Error(`card size must be positive integers, got: ${String(d)}`);
+    return d;
+  });
+  const [w, h] = dims;
+  const fit =
+    w !== undefined && h !== undefined
+      ? `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`
+      : w !== undefined
+        ? `scale=${w}:-2`
+        : h !== undefined
+          ? `scale=-2:${h}`
+          : 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+  const total = secs(o.seconds);
+  const voice =
+    o.audio !== undefined
+      ? ['-i', o.audio]
+      : ['-f', 'lavfi', '-i', `anullsrc=r=${NARRATION_SAMPLE_RATE}:cl=stereo`];
+  return [
+    '-loop',
+    '1',
+    '-framerate',
+    String(CARD_FPS),
+    '-i',
+    o.image,
+    ...voice,
+    '-filter_complex',
+    `[0:v]${fit},format=yuv420p,setsar=1[v];[1:a]aresample=${NARRATION_SAMPLE_RATE},apad=whole_dur=${total}[a]`,
+    '-map',
+    '[v]',
+    '-map',
+    '[a]',
+    '-t',
+    total,
+    ...ENCODE_PROFILE(o.threads),
+    ...NARRATION_AUDIO,
+    o.output,
+  ];
+}
+
+/** A card is a constant-rate still; the rate only has to be one `concat` accepts beside a phone's clips. */
+const CARD_FPS = 30;
 
 /** One `file '<part>'` line per part, in order (concat demuxer list). */
 export function buildConcatListContent(paths: string[]): string {
@@ -365,6 +501,49 @@ function overlayPlacement(position: OverlayPosition | undefined): { x: string; y
 }
 
 /**
+ * The one `drawtext` filter instance CE emits for an overlay — shared by
+ * `buildFrameArgs` (every still) and `buildSliceArgs` (the whole cut), so the
+ * fence around caller text, colour, size and position is written once.
+ */
+export function drawtextFilter(overlay: FrameOverlay): string {
+  // `draw:` with an empty body is `null`, not `undefined`, in YAML — so
+  // this guard is a real authoring slip, not a defensive nicety. It has to
+  // be an Error like every other bad-config case: a raw TypeError out of
+  // the escape below would slip past the caller's typed-config-error
+  // mapping and surface as a generic handler failure.
+  if (typeof overlay !== 'object' || overlay === null || Array.isArray(overlay)) {
+    throw new Error(
+      `overlay must be an object, got: ${overlay === null ? 'null' : typeof overlay}`,
+    );
+  }
+  if (typeof overlay.text !== 'string') {
+    throw new Error(`overlay text must be a string, got: ${typeof overlay.text}`);
+  }
+  const placement = overlayPlacement(overlay.position);
+  const options = [
+    `text=${escapeAvfilterValue(overlay.text)}`,
+    'expansion=none',
+    `fontsize=h*${overlayFontSize(overlay.size)}`,
+    `fontcolor=${overlayColor(overlay.color)}`,
+  ];
+  // Deliberately NOT `background !== false`. YAML and JSON pipeline config
+  // is exactly where the string "false" comes from, and a truthiness test
+  // would draw the box anyway — the same silent-wrong-image bug
+  // `ffmpeg.handler.ts` already had to fix for `label`. A wrong frame with
+  // no error is worse than a config error.
+  if (overlay.background !== undefined && typeof overlay.background !== 'boolean') {
+    throw new Error(
+      `overlay background must be true or false, got: ${JSON.stringify(overlay.background)}`,
+    );
+  }
+  if (overlay.background !== false) {
+    options.push('box=1', 'boxcolor=black@0.6', 'boxborderw=8');
+  }
+  options.push(`x=${placement.x}`, `y=${placement.y}`);
+  return `drawtext=${options.join(':')}`;
+}
+
+/**
  * One still: fast-seek (`-ss` before `-i`, keyframe-accurate rather than
  * frame-exact) to `time`, scale to `height` (width kept even via `-2`), and
  * optionally draw ONE line of text on it. That is deliberately a DRAWING
@@ -412,44 +591,7 @@ export function buildFrameArgs(o: {
   // too — `buildFrameArgs({ height: '720,hflip' })` would otherwise chain a
   // second filter.
   const filters = [`scale=-2:${o.height}`];
-  const overlay = o.overlay;
-  if (overlay !== undefined) {
-    // `draw:` with an empty body is `null`, not `undefined`, in YAML — so
-    // this guard is a real authoring slip, not a defensive nicety. It has to
-    // be an Error like every other bad-config case: a raw TypeError out of
-    // the escape below would slip past the caller's typed-config-error
-    // mapping and surface as a generic handler failure.
-    if (typeof overlay !== 'object' || overlay === null || Array.isArray(overlay)) {
-      throw new Error(
-        `overlay must be an object, got: ${overlay === null ? 'null' : typeof overlay}`,
-      );
-    }
-    if (typeof overlay.text !== 'string') {
-      throw new Error(`overlay text must be a string, got: ${typeof overlay.text}`);
-    }
-    const placement = overlayPlacement(overlay.position);
-    const options = [
-      `text=${escapeAvfilterValue(overlay.text)}`,
-      'expansion=none',
-      `fontsize=h*${overlayFontSize(overlay.size)}`,
-      `fontcolor=${overlayColor(overlay.color)}`,
-    ];
-    // Deliberately NOT `background !== false`. YAML and JSON pipeline config
-    // is exactly where the string "false" comes from, and a truthiness test
-    // would draw the box anyway — the same silent-wrong-image bug
-    // `ffmpeg.handler.ts` already had to fix for `label`. A wrong frame with
-    // no error is worse than a config error.
-    if (overlay.background !== undefined && typeof overlay.background !== 'boolean') {
-      throw new Error(
-        `overlay background must be true or false, got: ${JSON.stringify(overlay.background)}`,
-      );
-    }
-    if (overlay.background !== false) {
-      options.push('box=1', 'boxcolor=black@0.6', 'boxborderw=8');
-    }
-    options.push(`x=${placement.x}`, `y=${placement.y}`);
-    filters.push(`drawtext=${options.join(':')}`);
-  }
+  if (o.overlay !== undefined) filters.push(drawtextFilter(o.overlay));
   return [
     '-ss',
     secs(o.time),

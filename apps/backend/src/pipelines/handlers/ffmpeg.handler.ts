@@ -35,11 +35,20 @@ import {
   buildConcatListContent,
   buildFrameArgs,
   buildTileArgs,
+  buildCardArgs,
+  narrationTotal,
 } from '../ffmpeg/ffmpeg-args';
 import type { FrameOverlay } from '../ffmpeg/ffmpeg-args';
 import { readFfmpegEnv } from '../ffmpeg/ffmpeg-env';
 
-const OPERATIONS = ['probe', 'extract_audio', 'slice', 'concat', 'frames'] as const;
+const OPERATIONS = ['probe', 'extract_audio', 'slice', 'concat', 'frames', 'card'] as const;
+
+/** slice with `audio`: the cut's own audio under the voice, unless the caller sets `original`. */
+const DEFAULT_NARRATION_ORIGINAL = 0.25;
+/** card with `audio`: silence after the line ends, so a card never cuts on the last word. */
+const CARD_AUDIO_TAIL_SECONDS = 0.5;
+/** card without `audio`: how long it holds. */
+const DEFAULT_CARD_SECONDS = 4;
 
 /**
  * Hard ceiling on stills one step may ask for, measured on `times.length`.
@@ -177,8 +186,27 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     need('spans', ['slice']);
     need('times', ['frames']);
     need('inputs', ['concat']);
-    need('output', ['extract_audio', 'slice', 'concat']);
+    need('output', ['extract_audio', 'slice', 'concat', 'card']);
     need('outputPrefix', ['frames']);
+    need('image', ['card']);
+    if (config.operation === 'slice') {
+      this.narrationKnobs(config);
+      // A cut's overlay is ONE line for the whole cut: a per-still array has no meaning here.
+      const draw = this.knobs(config).draw;
+      if (draw && Array.isArray(draw.text)) {
+        throw new ConfigurationError(
+          'ffmpeg_handler slice draw.text must be one string: a cut carries one line, not one per still',
+          'ffmpeg_handler',
+        );
+      }
+      if (draw) {
+        this.frameArgv({
+          ...PREFLIGHT_FRAME,
+          overlay: this.overlay(draw, this.previewDrawText(draw)),
+        });
+      }
+    }
+    if (config.operation === 'card') this.cardKnobs(config);
     // The knobs are validated here, at the boundary where untrusted config
     // enters — not in the pure builders, which cannot report a config error.
     // Scoped to the one op that reads them, so a pre-existing slice/concat step
@@ -296,6 +324,34 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           ),
         columns: this.knob(tile.columns, 'tile.columns', 'integer') ?? DEFAULT_TILE_COLUMNS,
       },
+    };
+  }
+
+  /** slice: the level of the cut's own audio under the voice. Zero is a real answer, so not `knob()`. */
+  private narrationKnobs(config: FfmpegHandlerConfig): { original: number } {
+    const raw: unknown = config.original;
+    if (raw === undefined || raw === null || raw === '')
+      return { original: DEFAULT_NARRATION_ORIGINAL };
+    const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw.trim()) : NaN;
+    if (!Number.isFinite(n) || n < 0 || n > 1) {
+      throw new ConfigurationError(
+        `ffmpeg_handler original must be a number from 0 to 1 (got ${JSON.stringify(raw)})`,
+        'ffmpeg_handler',
+      );
+    }
+    return { original: n };
+  }
+
+  /** card: how long it holds without audio, and the segment's size. */
+  private cardKnobs(config: FfmpegHandlerConfig): {
+    seconds: number;
+    width?: number;
+    height?: number;
+  } {
+    return {
+      seconds: this.knob(config.seconds, 'seconds', 'number') ?? DEFAULT_CARD_SECONDS,
+      width: this.knob(config.width, 'width', 'integer'),
+      height: this.knob(config.height, 'height', 'integer'),
     };
   }
 
@@ -534,6 +590,8 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           return this.runConcat(config, context, stepName, executor, signal);
         case 'frames':
           return this.runFrames(config, context, stepName, executor, signal);
+        case 'card':
+          return this.runCard(config, context, stepName, executor, signal);
       }
     };
     try {
@@ -1069,44 +1127,98 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       ? await this.resolveKey(config.audioOutput, context, stepName, 'output')
       : null;
     const inName = `in${path.posix.extname(inputKey) || '.mp4'}`;
-    const commands: FfmpegJobCommand[] = [
-      {
-        id: 'slice',
-        kind: 'ffmpeg',
-        argv: buildSliceArgs({
-          input: `{in:${inName}}`,
-          output: '{out:clip.mp4}',
-          spans,
-          threads: executor.argvThreads(),
-          audioFades: config.audioFades === true,
-        }),
-      },
-    ];
+
+    // The voice (feedback-video): probed for its length FIRST, so the cut's argv carries
+    // numbers ffmpeg is told rather than lengths it has to discover.
+    const voiceKey = config.audio
+      ? await this.resolveKey(config.audio, context, stepName, 'input')
+      : null;
+    if (voiceKey && spans.length !== 1) {
+      throw Object.assign(
+        new Error('ffmpeg_handler spans invalid: a slice with audio takes exactly one span'),
+        {
+          code: 'INVALID_SPANS',
+        },
+      );
+    }
+    const voiceName = voiceKey ? `voice${path.posix.extname(voiceKey) || '.wav'}` : null;
+    const voiceSeconds = voiceKey ? await this.probeSeconds(executor, voiceKey, signal) : null;
+    const narration =
+      voiceKey && voiceName && voiceSeconds !== null
+        ? {
+            input: `{in:${voiceName}}`,
+            seconds: voiceSeconds,
+            original: this.narrationKnobs(config).original,
+          }
+        : undefined;
+
+    // One line on the whole cut (feedback-video): the same fence as a still's overlay.
+    const draw = this.knobs(config).draw;
+    const texts = this.resolveDrawTexts(draw, 1, context, stepName);
+    const overlayFor = (withDraw: boolean) =>
+      withDraw && draw && texts ? this.overlay(draw, texts[0]) : undefined;
+
     const outputs: FfmpegJobOutput[] = [
       { name: 'clip.mp4', key: outputKey, contentType: 'video/mp4' },
     ];
-    if (audioKey) {
-      // Second pass on the (small) clip — keeps the slice graph simple; cost is negligible.
-      commands.push({
-        id: 'wav',
-        kind: 'ffmpeg',
-        argv: buildExtractAudioArgs('{out:clip.mp4}', '{out:clip.wav}'),
-      });
-      outputs.push({ name: 'clip.wav', key: audioKey, contentType: 'audio/wav' });
-    }
-    const res = await this.runJob(
-      executor,
-      {
+    const inputs = [
+      // A single span fast-seeks before -i, so a stream fetches only its bytes (#796).
+      { name: inName, key: inputKey, stream: true as const },
+      ...(voiceKey && voiceName ? [{ name: voiceName, key: voiceKey }] : []),
+    ];
+    const job = (withDraw: boolean): FfmpegJob => {
+      const commands: FfmpegJobCommand[] = [
+        {
+          id: 'slice',
+          kind: 'ffmpeg',
+          argv: buildSliceArgs({
+            input: `{in:${inName}}`,
+            output: '{out:clip.mp4}',
+            spans,
+            threads: executor.argvThreads(),
+            audioFades: config.audioFades === true,
+            narration,
+            overlay: overlayFor(withDraw),
+          }),
+        },
+      ];
+      if (audioKey) {
+        // Second pass on the (small) clip — keeps the slice graph simple; cost is negligible.
+        commands.push({
+          id: 'wav',
+          kind: 'ffmpeg',
+          argv: buildExtractAudioArgs('{out:clip.mp4}', '{out:clip.wav}'),
+        });
+      }
+      return {
         id: stepName,
         commands,
-        // A single span fast-seeks before -i, so a stream fetches only its bytes (#796).
-        inputs: [{ name: inName, key: inputKey, stream: true }],
-        outputs,
+        inputs,
+        outputs: audioKey
+          ? [...outputs, { name: 'clip.wav', key: audioKey, contentType: 'audio/wav' }]
+          : outputs,
         files: [],
-      },
-      signal,
-    );
-    const duration = spans.reduce((n, s) => n + (s.end - s.start), 0);
+      };
+    };
+
+    // Ruling R77, as for `frames`: a local ffmpeg known to lack drawtext skips the draw up
+    // front; any other ffmpeg that turns out to lack it costs one undrawn retry, not the step.
+    const localLacksDrawtext =
+      executor.name === 'local' && this.capability.hasFilter?.('drawtext') === false;
+    let drawn = texts !== undefined && !localLacksDrawtext;
+    let res: FfmpegJobResult;
+    try {
+      res = await this.runJob(executor, job(drawn), signal);
+    } catch (error) {
+      if (!drawn || !isDrawtextFailure(error)) throw error;
+      this.logger.warn({ event: 'ffmpeg_slice_drawtext_missing', step: stepName });
+      drawn = false;
+      res = await this.runJob(executor, job(false), signal);
+    }
+    const spanSeconds = spans.reduce((n, s) => n + (s.end - s.start), 0);
+    const duration = narration
+      ? narrationTotal(spanSeconds, narration.seconds)
+      : Number(spanSeconds.toFixed(3));
     const wav = res.outputs.find((o) => o.name === 'clip.wav');
     return {
       success: true,
@@ -1114,13 +1226,121 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
         storage_path: outputKey,
         content_type: 'video/mp4',
         size: res.outputs[0].bytes,
-        duration: Number(duration.toFixed(3)),
+        duration,
+        narrated: narration !== undefined,
+        drawn,
         ...(wav && audioKey
           ? { audio: { storage_path: audioKey, content_type: 'audio/wav', size: wav.bytes } }
           : {}),
         ...this.telemetry(res),
       },
     };
+  }
+
+  /**
+   * A card (feedback-video): one image held as a video segment, under a voice or silence.
+   * The voice is probed first, as for a narrated slice, so the card's length is a number.
+   */
+  private async runCard(
+    config: FfmpegHandlerConfig,
+    context: PipelineContext,
+    stepName: string,
+    executor: FfmpegExecutor,
+    signal: AbortSignal,
+  ): Promise<StepResult> {
+    const knobs = this.cardKnobs(config);
+    const imageKey = await this.resolveKey(config.image!, context, stepName, 'input');
+    const outputKey = await this.resolveKey(config.output!, context, stepName, 'output');
+    const voiceKey = config.audio
+      ? await this.resolveKey(config.audio, context, stepName, 'input')
+      : null;
+    const imageName = `card${path.posix.extname(imageKey) || '.png'}`;
+    const voiceName = voiceKey ? `voice${path.posix.extname(voiceKey) || '.wav'}` : null;
+    const voiceSeconds = voiceKey ? await this.probeSeconds(executor, voiceKey, signal) : null;
+    const seconds =
+      voiceSeconds !== null
+        ? Number((voiceSeconds + CARD_AUDIO_TAIL_SECONDS).toFixed(3))
+        : knobs.seconds;
+    const res = await this.runJob(
+      executor,
+      {
+        id: stepName,
+        commands: [
+          {
+            id: 'card',
+            kind: 'ffmpeg',
+            argv: buildCardArgs({
+              image: `{in:${imageName}}`,
+              output: '{out:card.mp4}',
+              seconds,
+              audio: voiceName ? `{in:${voiceName}}` : undefined,
+              width: knobs.width,
+              height: knobs.height,
+              threads: executor.argvThreads(),
+            }),
+          },
+        ],
+        inputs: [
+          { name: imageName, key: imageKey },
+          ...(voiceKey && voiceName ? [{ name: voiceName, key: voiceKey }] : []),
+        ],
+        outputs: [{ name: 'card.mp4', key: outputKey, contentType: 'video/mp4' }],
+        files: [],
+      },
+      signal,
+    );
+    return {
+      success: true,
+      output: {
+        storage_path: outputKey,
+        content_type: 'video/mp4',
+        size: res.outputs[0].bytes,
+        duration: seconds,
+        narrated: voiceKey !== null,
+        ...this.telemetry(res),
+      },
+    };
+  }
+
+  /** The length of an audio object, by a probe job of its own. Fails the step when it has none. */
+  private async probeSeconds(
+    executor: FfmpegExecutor,
+    key: string,
+    signal: AbortSignal,
+  ): Promise<number> {
+    const name = `probe${path.posix.extname(key) || '.bin'}`;
+    const res = await this.runJob(
+      executor,
+      {
+        id: `${key}:probe`,
+        commands: [
+          {
+            id: 'probe',
+            kind: 'ffprobe',
+            argv: buildProbeArgs(`{in:${name}}`),
+            timeoutSeconds: PROBE_TIMEOUT_SECONDS,
+          },
+        ],
+        inputs: [{ name, key }],
+        outputs: [],
+        files: [],
+      },
+      signal,
+    );
+    let seconds = NaN;
+    try {
+      seconds = Number(
+        (JSON.parse(res.stdout) as { format?: { duration?: string } }).format?.duration,
+      );
+    } catch {
+      // Not JSON: reported below as an unreadable length.
+    }
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      throw Object.assign(new Error(`ffmpeg_handler audio ${key} has no readable length`), {
+        code: 'FFMPEG_FAILED',
+      });
+    }
+    return Number(seconds.toFixed(3));
   }
 
   private async runConcat(
