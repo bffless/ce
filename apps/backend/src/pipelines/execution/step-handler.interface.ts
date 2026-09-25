@@ -896,6 +896,14 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   audioOutput?: string;
   /** slice only: ~10 ms audio edge fades per span (assemble parity). Default false. */
   audioFades?: boolean;
+  /**
+   * concat only: re-encode the parts to the shared profile instead of stream-copying first.
+   * For parts that share a codec but not their parameter sets (a `card` beside a phone clip
+   * differs in H.264 level and colour range): a stream copy stitches them into one track with
+   * one parameter set, which ffmpeg tolerates and a browser's decoder can stop on at the
+   * join. Default false. String forms ('true'/'false') are coerced, as config arrives as YAML.
+   */
+  reencode?: boolean | string;
   /** frames: destination DIRECTORY, uploads-relative. TEMPLATE. A trailing slash is stripped. */
   outputPrefix?: string;
   /** frames: capture times in source seconds — an array (entries may be BARE expressions) or a BARE expression resolving to one. NOT `{{...}}`: a braced value comes back as a literal string and fails. */

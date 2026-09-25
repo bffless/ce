@@ -634,6 +634,26 @@ describe('slice with audio and draw, and card (feedback-video)', () => {
 });
 
 describe('concat', () => {
+  it('reencode: true skips the stream copy and re-encodes straight away', async () => {
+    const { handler, runner, storageAdapter } = extractSetup();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'concat',
+        inputs: ['a/card.mp4', 'a/cut.mp4'],
+        output: 'a/final.mp4',
+        reencode: 'true',
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({ reencoded: true });
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    const args = runner.run.mock.calls[0][0].args as string[];
+    expect(args).toEqual(expect.arrayContaining(['-c:v', 'libx264']));
+    expect(args).not.toEqual(expect.arrayContaining(['-c', 'copy']));
+  });
+
   it('stream-copies, writing a concat list into the job dir', async () => {
     const { handler, runner, storageAdapter } = extractSetup();
     storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));

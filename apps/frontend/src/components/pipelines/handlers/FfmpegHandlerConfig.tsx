@@ -73,7 +73,7 @@ const FIELDS_BY_OPERATION: Record<FfmpegOperation, Array<keyof Config>> = {
     'draw',
     'executor',
   ],
-  concat: ['inputs', 'output', 'executor'],
+  concat: ['inputs', 'output', 'reencode', 'executor'],
   frames: ['input', 'outputPrefix', 'times', 'height', 'quality', 'draw', 'tile', 'executor'],
   card: ['image', 'output', 'audio', 'seconds', 'width', 'height', 'executor'],
 };
@@ -198,7 +198,7 @@ const OUTPUT_FIELDS: Record<FfmpegOperation, Array<[string, string]>> = {
     ['storage_path', 'Where the result was written'],
     ['content_type', 'video/mp4'],
     ['size', 'Result bytes'],
-    ['reencoded', 'True when the stream-copy failed and CE re-encoded'],
+    ['reencoded', 'True when CE re-encoded: asked to, or because the stream-copy failed'],
   ],
   // `frames` writes a DIRECTORY, so its output is an array rather than the
   // single storage_path the other operations return — and WHICH array depends
@@ -374,6 +374,23 @@ export function FfmpegHandlerConfig({ config, onChange, previousSteps = [] }: Pr
             onChange={(v) => update({ output: v || undefined })}
             placeholder="studio/clips/{{request.body.jobId}}.mp4"
             previousSteps={previousSteps}
+          />
+        </div>
+      )}
+
+      {operation === 'concat' && (
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label>Always re-encode</Label>
+            <p className="text-xs text-muted-foreground">
+              For parts whose parameter sets differ (a card beside a phone clip): a stream copy
+              joins them into one track a browser may stop on. Off: stream-copy first, re-encode
+              only when that fails.
+            </p>
+          </div>
+          <Switch
+            checked={typed.reencode === true || typed.reencode === 'true'}
+            onCheckedChange={(checked) => update({ reencode: checked || undefined })}
           />
         </div>
       )}
