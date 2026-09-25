@@ -1,4 +1,5 @@
 import {
+  buildCardArgs,
   buildConcatArgs,
   buildConcatListContent,
   buildExtractAudioArgs,
@@ -6,6 +7,7 @@ import {
   buildProbeArgs,
   buildSliceArgs,
   buildTileArgs,
+  narrationTotal,
 } from './ffmpeg-args';
 import type { FrameOverlay, OverlayPosition } from './ffmpeg-args';
 
@@ -774,5 +776,183 @@ describe('buildTileArgs', () => {
     expect(vf(2, 2)).toBe('trim=end_frame=2,tile=2x1:padding=2:margin=2:color=0x111111');
     // The clamped count is what gets trimmed, never the raw one.
     expect(vf(0, 3)).toBe('trim=end_frame=1,tile=3x1:padding=2:margin=2:color=0x111111');
+  });
+});
+
+describe('buildSliceArgs — narration and overlay (feedback-video)', () => {
+  const narrated = (voiceSeconds: number, overlay?: FrameOverlay) =>
+    buildSliceArgs({
+      input: 'src.mp4',
+      output: 'clip.mp4',
+      spans: [{ start: 77, end: 88.2 }],
+      threads: 2,
+      narration: { input: 'voice.wav', seconds: voiceSeconds, original: 0.25 },
+      overlay,
+    });
+
+  it('takes the voice as a second input and pins the output to max(span, voice) with -t, never -to', () => {
+    const args = narrated(18.325);
+    expect(args.slice(0, 7)).toEqual(['-ss', '77', '-copyts', '-i', 'src.mp4', '-i', 'voice.wav']);
+    expect(args).not.toContain('-to');
+    expect(argAfter(args, '-t')).toBe('18.325');
+    expect(args.indexOf('-t')).toBeGreaterThan(args.indexOf('-map'));
+  });
+
+  it('holds the last frame under the rest of the line, mixes the cut audio under the voice at original, and pads both to the same length', () => {
+    const graph = argAfter(narrated(18.325), '-filter_complex');
+    expect(graph).toContain('[vout]tpad=stop_mode=clone:stop_duration=7.125[vpad]');
+    expect(graph).toContain('[aout]volume=0.25,apad=whole_dur=18.325[abed]');
+    expect(graph).toContain('[1:a]aresample=48000,apad=whole_dur=18.325[avoice]');
+    expect(graph).toContain('[abed][avoice]amix=inputs=2:duration=first:normalize=0[amix]');
+    const args = narrated(18.325);
+    expect(args[args.indexOf('-map') + 1]).toBe('[vpad]');
+    expect(args[args.lastIndexOf('-map') + 1]).toBe('[amix]');
+  });
+
+  it('a voice shorter than the span pads nothing on the picture and keeps the span length', () => {
+    const args = narrated(6);
+    const graph = argAfter(args, '-filter_complex');
+    expect(graph).not.toContain('tpad');
+    expect(argAfter(args, '-t')).toBe('11.2');
+    expect(args[args.indexOf('-map') + 1]).toBe('[vout]');
+  });
+
+  it('writes one audio layout for every narrated part, so concat can stream-copy them together', () => {
+    const args = narrated(18.325);
+    expect(argAfter(args, '-ar')).toBe('48000');
+    expect(argAfter(args, '-ac')).toBe('2');
+    const plain = buildSliceArgs({
+      input: 'src.mp4',
+      output: 'clip.mp4',
+      spans: [{ start: 1, end: 2 }],
+      threads: 2,
+    });
+    expect(plain).not.toContain('-ar');
+  });
+
+  it('draws one line on the whole cut through the same drawtext fence as a still', () => {
+    const args = narrated(18.325, {
+      text: '1:20 · rolled the stop at 4 mph',
+      position: 'bottom-left',
+      size: 1 / 18,
+    });
+    const graph = argAfter(args, '-filter_complex');
+    expect(graph).toContain('[vpad]drawtext=text=');
+    expect(graph).toContain('expansion=none');
+    expect(graph).toContain('x=16:y=h-th-16[vdraw]');
+    expect(args[args.indexOf('-map') + 1]).toBe('[vdraw]');
+    // The colon in the clock survives both parser passes (escaped twice).
+    expect(graph).toContain('1\\\\\\:20');
+  });
+
+  it('an overlay without narration draws on the plain cut and keeps -to', () => {
+    const args = buildSliceArgs({
+      input: 'src.mp4',
+      output: 'clip.mp4',
+      spans: [{ start: 1, end: 5 }],
+      threads: 2,
+      overlay: { text: 'hi' },
+    });
+    expect(argAfter(args, '-to')).toBe('5');
+    expect(argAfter(args, '-filter_complex')).toContain('[vout]drawtext=text=hi:');
+    expect(args[args.indexOf('-map') + 1]).toBe('[vdraw]');
+  });
+
+  it('refuses narration over more than one span, and an original outside 0 to 1', () => {
+    expect(() =>
+      buildSliceArgs({
+        input: 'a',
+        output: 'b',
+        spans: [
+          { start: 0, end: 1 },
+          { start: 2, end: 3 },
+        ],
+        threads: 1,
+        narration: { input: 'v', seconds: 1, original: 0.25 },
+      }),
+    ).toThrow(/exactly one span/);
+    expect(() => narratedWith(1.5)).toThrow(/original must be a number from 0 to 1/);
+    expect(() => narratedWith(-0.1)).toThrow(/original/);
+    expect(argAfter(narratedWith(0), '-filter_complex')).toContain('volume=0,');
+  });
+  const narratedWith = (original: number) =>
+    buildSliceArgs({
+      input: 'a',
+      output: 'b',
+      spans: [{ start: 0, end: 1 }],
+      threads: 1,
+      narration: { input: 'v', seconds: 1, original },
+    });
+
+  it('narrationTotal is the span or the voice, whichever is longer', () => {
+    expect(narrationTotal(11.2, 18.325)).toBe(18.325);
+    expect(narrationTotal(23, 18.325)).toBe(23);
+    expect(narrationTotal(5, -1)).toBe(5);
+  });
+});
+
+describe('buildCardArgs (feedback-video)', () => {
+  it('loops the image at a constant rate under the voice, padded to the given length, at the shared profile', () => {
+    const args = buildCardArgs({
+      image: 'card.png',
+      output: 'card.mp4',
+      seconds: 20.5,
+      audio: 'voice.wav',
+      width: 1280,
+      height: 720,
+      threads: 2,
+    });
+    expect(args.slice(0, 8)).toEqual([
+      '-loop',
+      '1',
+      '-framerate',
+      '30',
+      '-i',
+      'card.png',
+      '-i',
+      'voice.wav',
+    ]);
+    const graph = argAfter(args, '-filter_complex');
+    expect(graph).toBe(
+      '[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p,setsar=1[v];[1:a]aresample=48000,apad=whole_dur=20.5[a]',
+    );
+    expect(argAfter(args, '-t')).toBe('20.5');
+    expect(args).toEqual(
+      expect.arrayContaining(['-c:v', 'libx264', '-c:a', 'aac', '-video_track_timescale', '90000']),
+    );
+    expect(argAfter(args, '-ar')).toBe('48000');
+    expect(args[args.length - 1]).toBe('card.mp4');
+  });
+
+  it('a silent card still carries an audio track, from a null source', () => {
+    const args = buildCardArgs({ image: 'card.png', output: 'card.mp4', seconds: 4, threads: 2 });
+    expect(args).toEqual(expect.arrayContaining(['-f', 'lavfi', 'anullsrc=r=48000:cl=stereo']));
+    expect(argAfter(args, '-filter_complex')).toContain(
+      '[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
+    );
+  });
+
+  it('one dimension lets the other follow the aspect ratio', () => {
+    expect(
+      argAfter(
+        buildCardArgs({ image: 'c.png', output: 'c.mp4', seconds: 4, height: 720, threads: 1 }),
+        '-filter_complex',
+      ),
+    ).toContain('scale=-2:720,');
+    expect(
+      argAfter(
+        buildCardArgs({ image: 'c.png', output: 'c.mp4', seconds: 4, width: 1280, threads: 1 }),
+        '-filter_complex',
+      ),
+    ).toContain('scale=1280:-2,');
+  });
+
+  it('refuses a non-positive length and a non-integer size', () => {
+    expect(() =>
+      buildCardArgs({ image: 'c.png', output: 'c.mp4', seconds: 0, threads: 1 }),
+    ).toThrow(/seconds/);
+    expect(() =>
+      buildCardArgs({ image: 'c.png', output: 'c.mp4', seconds: 4, width: 12.5, threads: 1 }),
+    ).toThrow(/size/);
   });
 });

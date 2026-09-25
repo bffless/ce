@@ -43,6 +43,7 @@ describe('FfmpegCapabilityService', () => {
       'slice',
       'concat',
       'frames',
+      'card',
     ]);
   });
 
@@ -84,6 +85,7 @@ describe('FfmpegCapabilityService', () => {
       'slice',
       'concat',
       'frames',
+      'card',
     ]);
   });
 

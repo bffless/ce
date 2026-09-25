@@ -94,7 +94,7 @@ it('probe(): server = flag && any ready; additive executors/defaultExecutor/remo
     ).selector.probe(),
   ).resolves.toEqual({
     server: true,
-    ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames'],
+    ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames', 'card'],
     version: null,
     executors: ['remote'],
     defaultExecutor: 'remote',

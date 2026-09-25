@@ -478,7 +478,7 @@ export interface DelayHandlerConfig extends BaseHandlerConfig {
  * parses BOTH files and fails when the lists disagree — the convention has
  * already drifted twice, in both directions.
  */
-export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat' | 'frames';
+export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat' | 'frames' | 'card';
 
 /** Where a drawn overlay sits in the frame. A closed enum — callers never write an x/y expression. */
 export type OverlayPosition =
@@ -558,6 +558,16 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   draw?: FfmpegDrawConfig;
   /** frames: tile the stills into contact sheets instead of uploading them individually. Omit to upload each still. */
   tile?: FfmpegTileConfig;
+  /** slice (one span) and card: an audio object laid over the picture; CE probes its length. A TEMPLATE. */
+  audio?: string;
+  /** slice with audio: the cut's own audio under the voice, 0 to 1. Default 0.25. Literal number. */
+  original?: number;
+  /** card: the image to hold, uploads-relative. A TEMPLATE. */
+  image?: string;
+  /** card without audio: how long to hold the image. Default 4. Literal number. */
+  seconds?: number;
+  /** card: the segment's width (with height: fitted and letterboxed). Default the image's own. Literal integer. */
+  width?: number;
   /**
    * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
    * `{{expression}}` resolving to one. Default: the instance's default executor.

@@ -50,6 +50,11 @@ const OPERATIONS: { value: FfmpegOperation; label: string; hint: string }[] = [
     label: 'Frames (stills, titled stills, contact sheets)',
     hint: 'One still per entry in Times. Add Draw to burn a line of text into every still, and Tile to lay the stills out into contact sheets instead of uploading them one by one — a contact sheet is Draw + Tile. There is no separate contact-sheet operation.',
   },
+  {
+    value: 'card',
+    label: 'Card (hold an image as a video segment)',
+    hint: 'One image held as long as its Audio (plus half a second) or for Seconds, at the shared encode profile, so it stitches with slices. A silent card still carries an audio track.',
+  },
 ];
 
 /** Config fields each operation actually uses — drives what gets stripped on switch. */
@@ -57,9 +62,20 @@ const FIELDS_BY_OPERATION: Record<FfmpegOperation, Array<keyof Config>> = {
   // `executor` is on every operation — a probe WITH input runs a job too.
   probe: ['input', 'executor'],
   extract_audio: ['input', 'output', 'executor'],
-  slice: ['input', 'output', 'spans', 'audioOutput', 'audioFades', 'executor'],
+  slice: [
+    'input',
+    'output',
+    'spans',
+    'audioOutput',
+    'audioFades',
+    'audio',
+    'original',
+    'draw',
+    'executor',
+  ],
   concat: ['inputs', 'output', 'executor'],
   frames: ['input', 'outputPrefix', 'times', 'height', 'quality', 'draw', 'tile', 'executor'],
+  card: ['image', 'output', 'audio', 'seconds', 'width', 'height', 'executor'],
 };
 
 /** Deduped union of every field referenced above — kept in sync automatically. */
@@ -163,8 +179,20 @@ const OUTPUT_FIELDS: Record<FfmpegOperation, Array<[string, string]>> = {
     ['storage_path', 'Where the result was written'],
     ['content_type', 'video/mp4'],
     ['size', 'Result bytes'],
-    ['duration', 'Kept seconds, summed across the spans'],
+    ['duration', 'Kept seconds, summed across the spans — or the voice, when Audio runs longer'],
     ['audio', 'Only with audioOutput: {storage_path, content_type, size} for the WAV'],
+    ['narrated', 'True when Audio was laid over the cut'],
+    [
+      'drawn',
+      'True when Draw text was burned in (false when none was asked for, or this ffmpeg had no drawtext)',
+    ],
+  ],
+  card: [
+    ['storage_path', 'Where the result was written'],
+    ['content_type', 'video/mp4'],
+    ['size', 'Result bytes'],
+    ['duration', 'The voice plus half a second, or Seconds'],
+    ['narrated', 'True when Audio was laid over the card'],
   ],
   concat: [
     ['storage_path', 'Where the result was written'],
@@ -300,7 +328,7 @@ export function FfmpegHandlerConfig({ config, onChange, previousSteps = [] }: Pr
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
 
-      {operation !== 'concat' && (
+      {operation !== 'concat' && operation !== 'card' && (
         <div className="space-y-2">
           <Label>
             Input {operation === 'probe' ? '(optional — omit for a capability check)' : ''}
@@ -350,8 +378,109 @@ export function FfmpegHandlerConfig({ config, onChange, previousSteps = [] }: Pr
         </div>
       )}
 
+      {operation === 'card' && (
+        <>
+          <div className="space-y-2">
+            <Label>Image (uploads-relative)</Label>
+            <ExpressionInput
+              value={typed.image ?? ''}
+              onChange={(v) => update({ image: v || undefined })}
+              placeholder="{{steps.plan.card}} or studio/cards/score.png"
+              previousSteps={previousSteps}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Audio (optional voice to hold the card under)</Label>
+            <ExpressionInput
+              value={typed.audio ?? ''}
+              onChange={(v) => update({ audio: v || undefined })}
+              placeholder="{{steps.narrate.path}}"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              With audio the card lasts the voice plus half a second; without it, Seconds.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Seconds (no audio)</Label>
+              <Input
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={typed.seconds ?? ''}
+                onChange={(e) => update({ seconds: numeric(e.target.value) })}
+                placeholder="4"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Width in px</Label>
+              <Input
+                type="number"
+                min={16}
+                value={typed.width ?? ''}
+                onChange={(e) => update({ width: numeric(e.target.value) })}
+                placeholder="the image's own"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Height in px</Label>
+              <Input
+                type="number"
+                min={16}
+                value={typed.height ?? ''}
+                onChange={(e) => update({ height: numeric(e.target.value) })}
+                placeholder="the image's own"
+              />
+            </div>
+          </div>
+        </>
+      )}
+
       {operation === 'slice' && (
         <>
+          <div className="space-y-2">
+            <Label>Audio (optional voice laid over the cut — one span only)</Label>
+            <ExpressionInput
+              value={typed.audio ?? ''}
+              onChange={(v) => update({ audio: v || undefined })}
+              placeholder="{{steps.narrate.path}}"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              CE probes the voice first: the cut runs the span or the voice, whichever is longer,
+              holding its last frame under the rest of the line. The cut's own audio sits under it
+              at Original.
+            </p>
+          </div>
+          {typed.audio && (
+            <div className="space-y-2">
+              <Label>Original (the cut's own audio under the voice, 0 to 1)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={typed.original ?? ''}
+                onChange={(e) => update({ original: numeric(e.target.value) })}
+                placeholder="0.25"
+              />
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Draw one line on the whole cut (optional)</Label>
+            <ExpressionInput
+              value={typeof typed.draw?.text === 'string' ? typed.draw.text : ''}
+              onChange={(v) => update({ draw: v ? { ...(typed.draw ?? {}), text: v } : undefined })}
+              placeholder="1:20 · rolled the stop at 4 mph"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              One string, drawn verbatim for the cut's whole length — the same fence and the same
+              position/size/colour/background fields as Frames' Draw (edit those in the YAML). Text
+              that looks like a whole path (<code>steps.plan.label</code>) is resolved.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label>Audio output (optional WAV alongside the clip)</Label>
             <ExpressionInput

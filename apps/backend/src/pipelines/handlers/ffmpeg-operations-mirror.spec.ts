@@ -102,8 +102,8 @@ describe('ffmpeg operation lists agree across backend and frontend', () => {
 
   const backendOps = unionMembers(interfaceSrc, 'step-handler.interface.ts', 'FfmpegOperation');
 
-  it('the backend union is the five curated operations', () => {
-    expect(backendOps).toEqual(['probe', 'extract_audio', 'slice', 'concat', 'frames']);
+  it('the backend union is the six curated operations', () => {
+    expect(backendOps).toEqual(['probe', 'extract_audio', 'slice', 'concat', 'frames', 'card']);
   });
 
   it("the handler's own OPERATIONS guard matches the union it validates against", () => {

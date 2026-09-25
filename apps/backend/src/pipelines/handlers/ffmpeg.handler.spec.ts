@@ -130,7 +130,7 @@ describe('probe without input — the capability payload', () => {
     expect(result.success).toBe(true);
     expect(result.output).toEqual({
       server: true,
-      ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames'],
+      ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames', 'card'],
       version: 'ffmpeg version 6.1.1',
       executors: ['local'],
       defaultExecutor: 'local',
@@ -399,6 +399,237 @@ describe('slice', () => {
     expect(result.success).toBe(true);
     const args = runner.run.mock.calls[0][0].args as string[];
     expect(args).toEqual(expect.arrayContaining(['-filter_complex', '-copyts']));
+  });
+});
+
+describe('slice with audio and draw, and card (feedback-video)', () => {
+  /** The runner answers the voice probe with a length, then "produces" each output file. */
+  function narratedSetup(voiceSeconds = 18.325) {
+    const created = createHandler();
+    created.runner.run.mockImplementation(
+      async ({ args, cwd }: { args: string[]; cwd: string }) => {
+        if (args.includes('-show_format')) {
+          return {
+            stdout: JSON.stringify({ format: { duration: String(voiceSeconds) }, streams: [] }),
+            stderrTail: '',
+          };
+        }
+        await fsp.writeFile(`${cwd}/${args[args.length - 1].split('/').pop()}`, 'bytes');
+        return { stdout: '', stderrTail: '' };
+      },
+    );
+    created.storageAdapter.download.mockResolvedValue(Buffer.from('bytes'));
+    return created;
+  }
+
+  it('validateConfig: a card needs image and output; original is 0 to 1; a cut draws one string', () => {
+    const { handler } = createHandler();
+    expect(() => handler.validateConfig({ operation: 'card', output: 'c.mp4' } as never)).toThrow(
+      /image/,
+    );
+    expect(() => handler.validateConfig({ operation: 'card', image: 'c.png' } as never)).toThrow(
+      /output/,
+    );
+    expect(() =>
+      handler.validateConfig({
+        operation: 'card',
+        image: 'c.png',
+        output: 'c.mp4',
+        seconds: -1,
+      } as never),
+    ).toThrow(/seconds/);
+    expect(() =>
+      handler.validateConfig({
+        operation: 'card',
+        image: 'c.png',
+        output: 'c.mp4',
+        width: 12.5,
+      } as never),
+    ).toThrow(/width/);
+    expect(() =>
+      handler.validateConfig({
+        operation: 'card',
+        image: 'c.png',
+        output: 'c.mp4',
+        audio: 'v.wav',
+        width: 1280,
+        height: 720,
+      } as never),
+    ).not.toThrow();
+    const cut = {
+      operation: 'slice',
+      input: 'a.mp4',
+      spans: [{ start: 1, end: 5 }],
+      output: 'b.mp4',
+    };
+    expect(() =>
+      handler.validateConfig({ ...cut, audio: 'v.wav', original: 1.5 } as never),
+    ).toThrow(/original/);
+    expect(() =>
+      handler.validateConfig({ ...cut, audio: 'v.wav', original: '0.3' } as never),
+    ).not.toThrow();
+    expect(() => handler.validateConfig({ ...cut, draw: { text: ['a', 'b'] } } as never)).toThrow(
+      /one string/,
+    );
+    expect(() => handler.validateConfig({ ...cut, draw: { text: 'a', size: 5 } } as never)).toThrow(
+      /size/,
+    );
+    expect(() =>
+      handler.validateConfig({ ...cut, draw: { text: '1:20 · rolled the stop' } } as never),
+    ).not.toThrow();
+  });
+
+  it('a narrated cut probes the voice first, then cuts with it as a second input, and reports the longer length', async () => {
+    const { handler, runner } = narratedSetup(18.325);
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'r/src.mp4',
+        spans: [{ start: 77, end: 88.2 }],
+        output: 'r/cut.mp4',
+        audio: 'r/voice.wav',
+        original: 0.3,
+        draw: { text: '1:20 · rolled the stop at 4 mph', position: 'bottom-left' },
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({
+      storage_path: 'o/r/uploads/r/cut.mp4',
+      duration: 18.325,
+      narrated: true,
+      drawn: true,
+    });
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    const probeArgs = runner.run.mock.calls[0][0].args as string[];
+    expect(probeArgs).toEqual(expect.arrayContaining(['-show_format']));
+    const cutArgs = runner.run.mock.calls[1][0].args as string[];
+    expect(cutArgs.filter((a) => a === '-i')).toHaveLength(2);
+    const graph = cutArgs[cutArgs.indexOf('-filter_complex') + 1];
+    expect(graph).toContain('volume=0.3,apad=whole_dur=18.325');
+    expect(graph).toContain('tpad=stop_mode=clone:stop_duration=7.125');
+    expect(graph).toContain('drawtext=text=');
+    expect(cutArgs[cutArgs.indexOf('-t') + 1]).toBe('18.325');
+  });
+
+  it('a narrated cut over two spans is refused as INVALID_SPANS before any work', async () => {
+    const { handler, runner } = narratedSetup();
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'a.mp4',
+        spans: [
+          { start: 0, end: 1 },
+          { start: 2, end: 3 },
+        ],
+        output: 'b.mp4',
+        audio: 'v.wav',
+      }),
+    );
+    expect(result.error?.code).toBe('INVALID_SPANS');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('a voice with no readable length fails the step', async () => {
+    const { handler } = narratedSetup(0);
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'a.mp4',
+        spans: [{ start: 0, end: 1 }],
+        output: 'b.mp4',
+        audio: 'v.wav',
+      }),
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toMatch(/no readable length/);
+  });
+
+  it('an ffmpeg without drawtext costs the cut one undrawn retry, not the step', async () => {
+    const { handler, runner } = narratedSetup(6);
+    let cuts = 0;
+    const base = runner.run.getMockImplementation()!;
+    runner.run.mockImplementation(async (job: { args: string[]; cwd: string }) => {
+      if (job.args.includes('-filter_complex') && cuts++ === 0) {
+        throw Object.assign(new Error('boom'), {
+          code: 'FFMPEG_FAILED',
+          stderrTail: "No such filter: 'drawtext'",
+        });
+      }
+      return base(job);
+    });
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'a.mp4',
+        spans: [{ start: 0, end: 10 }],
+        output: 'b.mp4',
+        audio: 'v.wav',
+        draw: { text: 'hi' },
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({ drawn: false, narrated: true, duration: 10 });
+    expect(runner.run).toHaveBeenCalledTimes(3);
+    const retryArgs = runner.run.mock.calls[2][0].args as string[];
+    expect(retryArgs[retryArgs.indexOf('-filter_complex') + 1]).not.toContain('drawtext');
+  });
+
+  it('a plain cut reports narrated:false and drawn:false and probes nothing', async () => {
+    const { handler, runner } = narratedSetup();
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'a.mp4',
+        spans: [{ start: 0, end: 2.5 }],
+        output: 'b.mp4',
+      }),
+    );
+    expect(result.output).toMatchObject({ duration: 2.5, narrated: false, drawn: false });
+    expect(runner.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('a card under a voice lasts the voice plus half a second; a silent one lasts seconds', async () => {
+    const { handler, runner } = narratedSetup(20);
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'card',
+        image: 'r/score.png',
+        output: 'r/card.mp4',
+        audio: 'r/voice.wav',
+        width: 1280,
+        height: 720,
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({
+      storage_path: 'o/r/uploads/r/card.mp4',
+      content_type: 'video/mp4',
+      duration: 20.5,
+      narrated: true,
+    });
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    const cardArgs = runner.run.mock.calls[1][0].args as string[];
+    expect(cardArgs).toEqual(expect.arrayContaining(['-loop', '1']));
+    expect(cardArgs[cardArgs.indexOf('-t') + 1]).toBe('20.5');
+    expect(cardArgs[cardArgs.indexOf('-filter_complex') + 1]).toContain(
+      'scale=1280:720:force_original_aspect_ratio=decrease',
+    );
+
+    runner.run.mockClear();
+    const silent = await handler.execute(
+      context(),
+      step({ operation: 'card', image: 'r/score.png', output: 'r/card2.mp4', seconds: '4' }),
+    );
+    expect(silent.output).toMatchObject({ duration: 4, narrated: false });
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    const silentArgs = runner.run.mock.calls[0][0].args as string[];
+    expect(silentArgs).toEqual(expect.arrayContaining(['-f', 'lavfi']));
   });
 });
 
