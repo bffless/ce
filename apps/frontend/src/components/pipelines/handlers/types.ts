@@ -539,6 +539,8 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   audioOutput?: string;
   /** slice only: ~10 ms audio edge fades per span. */
   audioFades?: boolean;
+  /** concat only: always re-encode the parts to the shared profile (parts whose parameter sets differ, e.g. a card beside a phone clip). Default false. */
+  reencode?: boolean | string;
   /** frames: destination DIRECTORY, uploads-relative. A TEMPLATE ({{...}} substituted, anything else verbatim). */
   outputPrefix?: string;
   /** frames: capture times in source seconds — an array (entries may be BARE expressions) or a bare expression resolving to one. Not {{...}}. */

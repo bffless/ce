@@ -1386,29 +1386,32 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     const threads = executor.argvThreads();
     // Stream-copy first; only a process failure (stream mismatch) hands over to
     // the re-encode fallback — busy/timeout/memory abort the job untouched.
+    // `reencode: true` skips the copy: parts that share a codec but not their
+    // parameter sets copy without error into a track a decoder may stop on.
+    const force = this.boolKnob(config.reencode, 'reencode', false);
+    const reencodeCommand: FfmpegJobCommand = {
+      id: 'reencode',
+      kind: 'ffmpeg',
+      argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', { reencode: true, threads }),
+      ...(force ? {} : { fallbackFor: 'copy' }),
+    };
     const res = await this.runJob(
       executor,
       {
         id: stepName,
-        commands: [
-          {
-            id: 'copy',
-            kind: 'ffmpeg',
-            argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
-              reencode: false,
-              threads,
-            }),
-          },
-          {
-            id: 'reencode',
-            kind: 'ffmpeg',
-            argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
-              reencode: true,
-              threads,
-            }),
-            fallbackFor: 'copy',
-          },
-        ],
+        commands: force
+          ? [reencodeCommand]
+          : [
+              {
+                id: 'copy',
+                kind: 'ffmpeg',
+                argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
+                  reencode: false,
+                  threads,
+                }),
+              },
+              reencodeCommand,
+            ],
         inputs,
         outputs: [{ name: 'final.mp4', key: outputKey, contentType: 'video/mp4' }],
         // Scratch-relative names: the concat demuxer resolves each entry against
@@ -1418,7 +1421,8 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       signal,
     );
     const reencoded = res.commands.some((c) => c.id === 'reencode' && c.ran);
-    if (reencoded) this.logger.warn({ event: 'ffmpeg_concat_reencode_fallback', step: stepName });
+    if (reencoded && !force)
+      this.logger.warn({ event: 'ffmpeg_concat_reencode_fallback', step: stepName });
     return {
       success: true,
       output: {
