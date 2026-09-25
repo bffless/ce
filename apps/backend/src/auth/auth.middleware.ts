@@ -22,6 +22,17 @@ import { isApiRequest } from '../common/request-kind';
  * IMPORTANT: For /public/* routes on public domains, we skip the 401
  * response and let the request continue to PublicController, which
  * will serve the content without authentication.
+ *
+ * Likewise for an auth endpoint reached through an alias or subdomain host
+ * (issue #811): nginx rewrites `POST /api/auth/session/refresh` on such a host
+ * to `/public/subdomain-alias/<alias>/api/auth/...` (or
+ * `/public/<owner>/<repo>/alias/<alias>/api/auth/...`), so `isAuthEndpoint`
+ * does not see it. Answering 401 here would mean the refresh itself is refused
+ * and the session can never recover. Whether the request may pass is the
+ * matched proxy rule's call, and only ProxyMiddleware has that rule: it lets an
+ * auth proxy rule (`isAuthProxyRule`) through and answers this same
+ * "try refresh token" 401 from `req.tokenExpired` for anything else. So for
+ * that one shape the expired-token check only sets the flag and defers.
  */
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
@@ -65,11 +76,17 @@ export class AuthMiddleware implements NestMiddleware {
           // This prevents unnecessary pipeline/controller execution
           // Uses SuperTokens response format for consistency
           if (isApiRequest(req)) {
-            // Check if this is a public route on a public domain
-            const isPublic = await this.isPublicRoute(req);
-            if (isPublic) {
+            if (this.isAuthPathBehindPublicPrefix(req)) {
+              // An auth endpoint on an alias / subdomain host (#811). Defer to
+              // ProxyMiddleware: it has the matched rule, lets an auth proxy rule
+              // through, and answers this same 401 (via req.tokenExpired) otherwise.
+              this.logger.debug(
+                `Deferring expired-token check for auth path behind public prefix: ${requestPath}`,
+              );
+            } else if (await this.isPublicRoute(req)) {
+              // Public route on a public domain - continue to the controller,
+              // it will serve public content
               this.logger.debug(`Skipping 401 for expired token on public domain: ${requestPath}`);
-              // Continue to controller - it will serve public content
             } else {
               this.logger.debug('Returning try refresh token response for API request');
               return res.status(401).json({
@@ -142,6 +159,44 @@ export class AuthMiddleware implements NestMiddleware {
       this.logger.debug(`Error checking domain visibility: ${error}, continuing to controller`);
       return true;
     }
+  }
+
+  /**
+   * The public-prefix shapes nginx rewrites an alias / subdomain host request into -
+   * the same three `ProxyMiddleware` parses (`handleSubdomainAlias`, `parsePublicPath`).
+   * Group 1 is the remainder: the app-level path.
+   */
+  private static readonly PUBLIC_PREFIX =
+    /^\/public\/(?:subdomain-alias\/[^/]+|[^/]+\/[^/]+\/alias\/[^/]+|[^/]+\/[^/]+\/[^/]+)(\/.*)?$/;
+
+  /**
+   * The app-level path of a request that arrived rewritten under `/public/...`:
+   * `X-Original-URI` (what the client asked for; every domain and wildcard server
+   * block sets it), else the remainder after the public prefix - the precedence
+   * `ProxyMiddleware` matches rules with. `null` when the request is not one.
+   */
+  private appPathBehindPublicPrefix(req: Request): string | null {
+    const requestPath = req.originalUrl?.split('?')[0] || req.path;
+    if (!requestPath.startsWith('/public/')) {
+      return null;
+    }
+    const originalUri = req.headers['x-original-uri'];
+    if (typeof originalUri === 'string' && originalUri) {
+      return originalUri.split('?')[0];
+    }
+    const match = requestPath.match(AuthMiddleware.PUBLIC_PREFIX);
+    return match ? match[1] || '/' : null;
+  }
+
+  /**
+   * True when a `/public/...`-rewritten request is, at the app level, an auth
+   * endpoint (`/api/auth`, `/api/auth/...`) - the only paths an auth proxy rule
+   * (`ProxyMiddleware.isAuthProxyRule`) can match, so the only ones whose
+   * expired-token verdict is deferred to it.
+   */
+  private isAuthPathBehindPublicPrefix(req: Request): boolean {
+    const appPath = this.appPathBehindPublicPrefix(req);
+    return appPath === '/api/auth' || appPath?.startsWith('/api/auth/') === true;
   }
 
   /**

@@ -120,6 +120,100 @@ describe('AuthMiddleware', () => {
     });
   });
 
+  describe('expired token on an auth path behind the public prefix (issue #811)', () => {
+    // nginx rewrites `POST /api/auth/session/refresh` on an alias / subdomain host
+    // to one of these. The verdict is ProxyMiddleware's (it has the matched rule),
+    // so AuthMiddleware must only flag the request and let it through - on a
+    // private host, where every other API path is answered 401 here.
+    const privateHost = { host: 'studio.example.com', 'x-forwarded-host': 'studio.example.com' };
+
+    beforeEach(() => {
+      visibilityService.resolveAccessControlByDomain.mockResolvedValue({ isPublic: false });
+    });
+
+    const expectDeferred = async (req: Request) => {
+      const res = response();
+      await authMiddleware.use(req, res, next);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+      expect(supertokensHandler).toHaveBeenCalledTimes(1);
+      expect(next).toHaveBeenCalledTimes(1);
+      expect((req as any).tokenExpired).toBe(true);
+    };
+
+    const expectAnswered401 = async (req: Request) => {
+      const res = response();
+      await authMiddleware.use(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ message: 'try refresh token' });
+      expect(supertokensHandler).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    };
+
+    it('lets the session refresh through on a wildcard subdomain host (/public/subdomain-alias/…)', async () => {
+      const req = request('/public/subdomain-alias/studio/api/auth/session/refresh', privateHost);
+      (req as any).method = 'POST';
+      await expectDeferred(req);
+    });
+
+    it('lets the session refresh through on a domain-mapped host (/public/{owner}/{repo}/alias/…)', async () => {
+      const req = request('/public/owner/repo/alias/production/api/auth/session/refresh', {
+        host: 'app.example.com',
+      });
+      (req as any).method = 'POST';
+      await expectDeferred(req);
+    });
+
+    it('reads the app-level path from X-Original-URI when nginx sets it, query string and all', async () => {
+      const req = request('/public/subdomain-alias/studio/api/auth/session/refresh', {
+        ...privateHost,
+        'x-original-uri': '/api/auth/session/refresh?rid=session',
+      });
+      await expectDeferred(req);
+    });
+
+    it('treats the bare /api/auth path as an auth path too', async () => {
+      const req = request('/public/subdomain-alias/studio/api/auth', privateHost);
+      await expectDeferred(req);
+    });
+
+    it('does not spend a visibility lookup on the deferred request', async () => {
+      const req = request('/public/subdomain-alias/studio/api/auth/session/refresh', privateHost);
+      await expectDeferred(req);
+      expect(visibilityService.resolveAccessControlByDomain).not.toHaveBeenCalled();
+    });
+
+    it('still answers 401 itself for any other API path on the same private host', async () => {
+      await expectAnswered401(request('/public/subdomain-alias/studio/api/works', privateHost));
+    });
+
+    it('does not widen the auth path to a sibling prefix (/api/authz)', async () => {
+      await expectAnswered401(
+        request('/public/subdomain-alias/studio/api/authz/session/refresh', privateHost),
+      );
+    });
+
+    it('trusts X-Original-URI over the rewritten path when the two disagree', async () => {
+      // A rewritten path that looks like an auth path but whose original URI is
+      // not one is matched by ProxyMiddleware on the original URI, so it is
+      // gated here on the same basis.
+      await expectAnswered401(
+        request('/public/subdomain-alias/studio/api/auth/session/refresh', {
+          ...privateHost,
+          'x-original-uri': '/api/works',
+        }),
+      );
+    });
+
+    it('is only for the rewritten /public/* shape: a direct /api/auth call still takes the isAuthEndpoint exemption', async () => {
+      const req = request('/api/auth/session/refresh');
+      const res = response();
+      await authMiddleware.use(req, res, next);
+      expect(mockDecode).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('pass-through cases', () => {
     it('skips the expiry check on auth endpoints', async () => {
       const req = request('/api/auth/session/refresh');
