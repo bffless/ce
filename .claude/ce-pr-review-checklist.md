@@ -377,6 +377,27 @@ two tests were wrong until the reviewer traced the DTO.
 
 ---
 
+### `AuthMiddleware`'s early 401 must not pre-empt an exemption `ProxyMiddleware`'s gate grants
+**Surface:** `apps/backend/src/auth/auth.middleware.ts` (the expired-token "try refresh token"
+short-circuit and `isAuthEndpoint`) vs. `apps/backend/src/proxy-rules/proxy.middleware.ts`
+(`checkVisibilityAndAuth` and its opt-outs: `isAuthProxyRule`, `bypassVisibility`,
+`servesProtectedResourceDocument`).
+**Check:** `AuthMiddleware` runs on every route *before* `ProxyMiddleware`, and on an alias /
+subdomain host the request arrives nginx-rewritten under `/public/...` (`X-Original-URI` carries
+the client's path), so its `/api/auth/` prefix test never sees it. A PR that adds or widens an
+exemption in the proxy gate must ask whether an expired `sAccessToken` reaches that gate at all —
+or is answered 401 one middleware earlier. The early 401 is an optimisation, not the authority:
+the gate reads `req.tokenExpired` and emits the same body, so the safe move is to set the flag and
+defer for the shape the gate knows how to judge (`alias-host-refresh-contract.spec.ts` runs both
+middlewares on one request to pin this).
+**Why:** The refresh endpoint is the one call that must work *with* an expired token. When the
+early 401 wins, the session on every private alias-hosted app dies at the access-token lifetime,
+with the client told "try refresh token" by the very response that refused the refresh.
+**Learned from:** #811, 2026-09-25 — `isAuthProxyRule` was added to the gate (#760-era) and was
+correct, but unreachable for an expired cookie on the rewritten path.
+
+---
+
 ## Entry template
 
 ```
