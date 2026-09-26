@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.62](https://github.com/bffless/ce/compare/v0.4.61...v0.4.62) (2026-09-26)
+
+
+### Added
+
+* **ffmpeg:** concat takes reencode: true, for parts whose parameter sets differ ([#810](https://github.com/bffless/ce/issues/810)) ([10a02cc](https://github.com/bffless/ce/commit/10a02cc8fe2af99d1366b60f1c25cbbb29e65816))
+* **ffmpeg:** narrated cuts (slice with audio and draw) and a card operation ([#808](https://github.com/bffless/ce/issues/808)) ([#809](https://github.com/bffless/ce/issues/809)) ([244e643](https://github.com/bffless/ce/commit/244e6432e952fe274a451151bb77009ed5d8c78b))
+
+
+### Fixed
+
+* **auth:** let session refresh reach the auth proxy on private alias hosts ([#812](https://github.com/bffless/ce/issues/812)) ([0c755de](https://github.com/bffless/ce/commit/0c755de73621e813222e2c8edf050f1675e25801)), closes [#811](https://github.com/bffless/ce/issues/811)
+* **pipelines:** let http_request headers override the default Content-Type ([#806](https://github.com/bffless/ce/issues/806)) ([c2fd5c4](https://github.com/bffless/ce/commit/c2fd5c40c7bb4e489b9f229ac6875d1a7604bb28)), closes [#805](https://github.com/bffless/ce/issues/805)
+
 ## [0.4.61](https://github.com/bffless/ce/compare/v0.4.60...v0.4.61) (2026-09-17)
 
 ### Added
