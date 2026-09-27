@@ -6,7 +6,7 @@
 # to the mounted volume. This ensures updates are applied without needing to
 # manually clear the volume (no more `--fresh` flag needed).
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

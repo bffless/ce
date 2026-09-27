@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Install pnpm
 # pnpm is PINNED to 9 to match every CI workflow (pnpm/action-setup version: 9) and the
@@ -36,7 +36,7 @@ COPY apps/backend/drizzle ./apps/backend/drizzle
 RUN pnpm --filter backend build
 
 # Production stage
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Install pnpm, netcat for health checks, and build tools for native modules.
 # nginx is installed ONLY for `nginx -t` validation of generated blocklist
