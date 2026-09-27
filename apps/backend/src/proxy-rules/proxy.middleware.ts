@@ -14,7 +14,7 @@ import {
   apiKeys,
   aliasProxyRuleSets,
 } from '../db/schema';
-import { ProxyRulesService } from './proxy-rules.service';
+import { ProxyRulesService, mergeRuleSetRules } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
 import { ProxyRule, ProxyType, PipelineConfig } from '../db/schema/proxy-rules.schema';
@@ -71,6 +71,8 @@ export class ProxyMiddleware implements NestMiddleware {
 
   // Simple cache for rules (TTL: 10 seconds)
   private ruleCache = new Map<string, CacheEntry>();
+  /** In-flight single-set reloads, keyed like ruleCache (single-flight, #813). */
+  private readonly ruleLoads = new Map<string, Promise<ProxyRule[]>>();
   private readonly CACHE_TTL = 10000;
 
   constructor(
@@ -1060,14 +1062,50 @@ export class ProxyMiddleware implements NestMiddleware {
       return cached.rules;
     }
 
-    const rules = await this.proxyRulesService.getEffectiveRulesForRuleSet(ruleSetId);
-    this.ruleCache.set(cacheKey, { rules, expiry: Date.now() + this.CACHE_TTL });
-    return rules;
+    // Single-flight: concurrent misses for the same rule set share one reload.
+    // A rule set's rows can carry megabytes of inline pipeline code, so N
+    // overlapping reloads meant N decoded copies alive at once (#813).
+    const pending = this.ruleLoads.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
+
+    const load = this.proxyRulesService
+      .getEffectiveRulesForRuleSet(ruleSetId)
+      .then((rules) => {
+        this.setCacheEntry(cacheKey, { rules, expiry: Date.now() + this.CACHE_TTL });
+        return rules;
+      })
+      .finally(() => {
+        this.ruleLoads.delete(cacheKey);
+      });
+    this.ruleLoads.set(cacheKey, load);
+    return load;
+  }
+
+  /**
+   * Store a cache entry, first dropping every expired one. Expired entries were
+   * otherwise only overwritten on the next miss for the same key, so a rule set
+   * no longer requested kept its last rules alive indefinitely (#813).
+   */
+  private setCacheEntry(cacheKey: string, entry: CacheEntry): void {
+    const now = Date.now();
+    for (const [key, existing] of this.ruleCache) {
+      if (existing.expiry <= now) {
+        this.ruleCache.delete(key);
+      }
+    }
+    this.ruleCache.set(cacheKey, entry);
   }
 
   /**
    * Get rules with caching based on multiple rule set IDs.
    * Merges rules from all sets with deduplication.
+   *
+   * The merged list is composed from the single-set cache entries (same rule
+   * objects, no second copy) rather than loaded as its own copy (#813). It
+   * expires with the earliest of its parts, so it never outlives, and never
+   * pins, the single-set rules it was built from.
    */
   private async getCachedRulesMulti(ruleSetIds: string[]): Promise<ProxyRule[]> {
     if (ruleSetIds.length === 0) {
@@ -1087,8 +1125,14 @@ export class ProxyMiddleware implements NestMiddleware {
       return cached.rules;
     }
 
-    const rules = await this.proxyRulesService.getEffectiveRulesForMultipleRuleSets(ruleSetIds);
-    this.ruleCache.set(cacheKey, { rules, expiry: Date.now() + this.CACHE_TTL });
+    const parts = await Promise.all(ruleSetIds.map((id) => this.getCachedRules(id)));
+    const rules = mergeRuleSetRules(ruleSetIds, parts.flat());
+    const expiry = Math.min(
+      ...ruleSetIds.map(
+        (id) => this.ruleCache.get(`ruleset:${id}`)?.expiry ?? Date.now() + this.CACHE_TTL,
+      ),
+    );
+    this.setCacheEntry(cacheKey, { rules, expiry });
     return rules;
   }
 
