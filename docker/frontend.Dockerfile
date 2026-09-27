@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Build argument for API URL (empty for relative URLs through nginx proxy)
 ARG VITE_API_URL=
@@ -35,7 +35,7 @@ RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
     pnpm build
 
 # Production stage - just copy dist files
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

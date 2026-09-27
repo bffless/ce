@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:22-alpine
 # Same ffmpeg package line as docker/backend.Dockerfile so flags/versions match the local executor.
 # font-noto is NOT optional: ffmpeg's `drawtext` (the frames op's `draw` block) takes no explicit
 # fontfile=, so it resolves a family through fontconfig. Alpine ships no fonts, and without one the
