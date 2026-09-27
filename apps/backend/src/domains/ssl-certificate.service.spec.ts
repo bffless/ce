@@ -4,6 +4,12 @@ import * as path from 'path';
 import * as forge from 'node-forge';
 import { SslCertificateService } from './ssl-certificate.service';
 
+// Minting a certificate here is node-forge's pure-JS RSA (jsbn big-integer arithmetic): about
+// a second per mock issuance under Jest against ~70 ms in plain Node, so a test that issues
+// twice sat at the default 5 s and timed out on loaded CI runners (bffless/ce#815's Test &
+// Build, three runs in a row). The work is real; the budget is what was wrong.
+jest.setTimeout(30_000);
+
 /**
  * Mint a real, self-signed cert/key pair carrying the given SANs, using the
  * same node-forge pattern as SslCertificateService.selfSignWithForge (and
