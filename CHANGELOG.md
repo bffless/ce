@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.63](https://github.com/bffless/ce/compare/v0.4.62...v0.4.63) (2026-09-27)
+
+
+### Fixed
+
+* **proxy-rules:** single-flight the edge rule cache and raise compose backend memory ([#813](https://github.com/bffless/ce/issues/813)) ([#815](https://github.com/bffless/ce/issues/815)) ([b13ed09](https://github.com/bffless/ce/commit/b13ed09e4b63ef1f53a322d1c9ab7ea7d17769b1))
+
 ## [0.4.62](https://github.com/bffless/ce/compare/v0.4.61...v0.4.62) (2026-09-26)
 
 ### Added
