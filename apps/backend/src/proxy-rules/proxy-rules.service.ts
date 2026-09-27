@@ -29,6 +29,36 @@ import { methodSignature } from './method-match';
 import { enforceOutboundVerdict, outboundUrlGuardMode } from '../common/outbound-url.guard';
 import { vetTargetUrl } from './target-url.guard';
 
+/**
+ * Merge the effective (enabled) rules of several rule sets into the order the
+ * edge matches them in: rule set order (lower index in `ruleSetIds` = higher
+ * priority), then rule order within a set. When two sets define the same
+ * path+method, the higher-priority set's rule wins.
+ *
+ * Pure: it neither copies nor mutates the rule objects, so the proxy
+ * middleware can compose a multi-set result from its cached single-set arrays
+ * without holding a second copy of each rule (#813).
+ */
+export function mergeRuleSetRules<T extends ProxyRule>(ruleSetIds: string[], rules: T[]): T[] {
+  // Sort by rule set order (priority), then by rule order within set
+  const setOrderMap = new Map(ruleSetIds.map((id, index) => [id, index]));
+  const sorted = [...rules].sort((a, b) => {
+    const setOrderA = setOrderMap.get(a.ruleSetId) ?? Infinity;
+    const setOrderB = setOrderMap.get(b.ruleSetId) ?? Infinity;
+    if (setOrderA !== setOrderB) return setOrderA - setOrderB;
+    return a.order - b.order;
+  });
+
+  // Deduplicate by path+method — first wins (higher priority set)
+  const seen = new Set<string>();
+  return sorted.filter((rule) => {
+    const key = `${rule.pathPattern}:${methodSignature(rule)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 @Injectable()
 export class ProxyRulesService {
   private readonly logger = new Logger(ProxyRulesService.name);
@@ -128,23 +158,7 @@ export class ProxyRulesService {
       .filter((r) => r.isEnabled)
       .map((rule) => this.decryptHeaderConfig(rule));
 
-    // Sort by rule set order (priority), then by rule order within set
-    const setOrderMap = new Map(ruleSetIds.map((id, index) => [id, index]));
-    enabledRules.sort((a, b) => {
-      const setOrderA = setOrderMap.get(a.ruleSetId) ?? Infinity;
-      const setOrderB = setOrderMap.get(b.ruleSetId) ?? Infinity;
-      if (setOrderA !== setOrderB) return setOrderA - setOrderB;
-      return a.order - b.order;
-    });
-
-    // Deduplicate by path+method — first wins (higher priority set)
-    const seen = new Set<string>();
-    return enabledRules.filter((rule) => {
-      const key = `${rule.pathPattern}:${methodSignature(rule)}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return mergeRuleSetRules(ruleSetIds, enabledRules);
   }
 
   /**

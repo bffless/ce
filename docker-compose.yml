@@ -24,16 +24,19 @@
 #
 # | VM Size | PostgreSQL | Redis   | SuperTokens | MinIO  | Backend | Total  |
 # |---------|------------|---------|-------------|--------|---------|--------|
-# | 1GB     | 256M       | 96M     | 200M        | 128M   | 192M    | ~900M  |
-# | 2GB     | 512M       | 192M    | 300M        | 256M   | 256M    | ~1.5G  |
-# | 4GB     | 1G         | 512M    | 512M        | 512M   | 512M    | ~3G    |
+# | 1GB     | 256M       | 96M     | 200M        | 128M   | 512M    | ~1.2G  |
+# | 2GB     | 512M       | 192M    | 300M        | 256M   | 512M    | ~1.8G  |
+# | 4GB     | 1G         | 512M    | 512M        | 512M   | 1G      | ~3.5G  |
+#
+# Limits are ceilings, not reservations: on a 1GB VM they add up to more than
+# the RAM, because the services rarely peak together. Add swap (below).
 #
 # Key tuning parameters by service:
 # - PostgreSQL: shared_buffers (25% of allocated), max_connections, work_mem
 # - Redis: maxmemory (should match container limit minus overhead)
 # - SuperTokens: JAVA_OPTS -Xmx (70% of container limit)
 # - MinIO: GOGC (lower = more aggressive GC, less memory)
-# - Backend: NODE_OPTIONS --max-old-space-size (70% of container limit)
+# - Backend: NODE_OPTIONS --max-old-space-size (75% of container limit)
 #
 # =============================================================================
 # SWAP (Recommended for 1GB-2GB VMs)
@@ -283,21 +286,26 @@ services:
     container_name: assethost-backend
     # -------------------------------------------------------------------------
     # BACKEND MEMORY: Node.js NestJS server
-    # 1GB VM: 192M | 2GB VM: 256M | 4GB VM: 512M
+    # 1GB VM: 512M | 2GB VM: 512M | 4GB VM: 1G
+    #
+    # Measured (#813): ~105-125 MB of live heap at idle after a full GC (the
+    # loaded storage, AI and auth SDKs), plus 50-120 MB transient while a
+    # pipeline-heavy workload runs. A 256 MB heap sat below that sum and the
+    # backend died of heap exhaustion; do not go below 384 MB of heap.
     #
     # Tuning guide:
-    #   --max-old-space-size = 70% of container limit (128/180/350)
+    #   --max-old-space-size = 75% of container limit (384/384/768)
     #   This controls V8 heap size; Node also uses memory for buffers, etc.
     # -------------------------------------------------------------------------
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 512M
         reservations:
           memory: 96M
     environment:
-      # Node.js heap: 128 for 1GB VM, 180 for 2GB, 350 for 4GB
-      NODE_OPTIONS: '--max-old-space-size=256'
+      # Node.js heap: 384 for 1GB and 2GB VMs, 768 for 4GB (see #813)
+      NODE_OPTIONS: '--max-old-space-size=384'
       NODE_ENV: production
       PORT: 3000
       BOOTSTRAP_DIR: /app/bootstrap
