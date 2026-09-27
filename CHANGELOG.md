@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.63](https://github.com/bffless/ce/compare/v0.4.62...v0.4.63) (2026-09-27)
 
-
 ### Fixed
+- proxy-rules: single-flight the edge rule cache and raise compose backend memory (#813) ([#815](https://github.com/bffless/ce/pull/815), thanks @toshimoto821)
 
-* **proxy-rules:** single-flight the edge rule cache and raise compose backend memory ([#813](https://github.com/bffless/ce/issues/813)) ([#815](https://github.com/bffless/ce/issues/815)) ([b13ed09](https://github.com/bffless/ce/commit/b13ed09e4b63ef1f53a322d1c9ab7ea7d17769b1))
+### Maintenance
+- ssl: a 30 s budget for the SSL certificate suite (pure-JS RSA under Jest) ([#816](https://github.com/bffless/ce/pull/816), thanks @toshimoto821)
+- Node 22 for the images and CI (Node 20 reached end of life in April 2026) ([#814](https://github.com/bffless/ce/pull/814), thanks @toshimoto821)
 
 ## [0.4.62](https://github.com/bffless/ce/compare/v0.4.61...v0.4.62) (2026-09-26)
 
