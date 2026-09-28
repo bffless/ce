@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.64](https://github.com/bffless/ce/compare/v0.4.63...v0.4.64) (2026-09-28)
+
+
+### Fixed
+
+* **ffmpeg:** an un-narrated slice writes 48 kHz stereo audio like a narrated one ([#819](https://github.com/bffless/ce/issues/819)) ([3cbc6c8](https://github.com/bffless/ce/commit/3cbc6c84a5157053b3c9108a438f327e104616b1)), closes [#818](https://github.com/bffless/ce/issues/818)
+
 ## [0.4.63](https://github.com/bffless/ce/compare/v0.4.62...v0.4.63) (2026-09-27)
 
 ### Fixed
