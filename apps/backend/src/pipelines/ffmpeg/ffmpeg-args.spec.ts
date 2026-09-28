@@ -821,13 +821,47 @@ describe('buildSliceArgs — narration and overlay (feedback-video)', () => {
     const args = narrated(18.325);
     expect(argAfter(args, '-ar')).toBe('48000');
     expect(argAfter(args, '-ac')).toBe('2');
+  });
+
+  /**
+   * #818. A phone's dashcam cut is mono AAC; left at the source layout, an
+   * un-narrated cut beside stereo cards and narrated cuts made `concat` take
+   * the first part's layout, and every voice after the mono part was lost.
+   */
+  it('writes the same 48 kHz stereo layout for an un-narrated cut (single span)', () => {
     const plain = buildSliceArgs({
       input: 'src.mp4',
       output: 'clip.mp4',
       spans: [{ start: 1, end: 2 }],
       threads: 2,
     });
-    expect(plain).not.toContain('-ar');
+    expect(argAfter(plain, '-ar')).toBe('48000');
+    expect(argAfter(plain, '-ac')).toBe('2');
+    expect(plain.indexOf('-ar')).toBeGreaterThan(plain.lastIndexOf('-map'));
+    expect(plain[plain.length - 1]).toBe('clip.mp4');
+    // The output layout flags leave the plain cut's own audio path alone.
+    expect(plain[plain.lastIndexOf('-map') + 1]).toBe('[aout]');
+    expect(argAfter(plain, '-to')).toBe('2');
+  });
+
+  it('writes the same 48 kHz stereo layout for an un-narrated multi-span cut', () => {
+    const plain = buildSliceArgs({
+      input: 'src.mp4',
+      output: 'clip.mp4',
+      spans: [
+        { start: 0, end: 1 },
+        { start: 2, end: 3 },
+      ],
+      threads: 2,
+    });
+    expect(argAfter(plain, '-ar')).toBe('48000');
+    expect(argAfter(plain, '-ac')).toBe('2');
+  });
+
+  it('a narrated cut carries the layout flags once, not twice', () => {
+    const args = narrated(18.325);
+    expect(args.filter((a) => a === '-ar')).toHaveLength(1);
+    expect(args.filter((a) => a === '-ac')).toHaveLength(1);
   });
 
   it('draws one line on the whole cut through the same drawtext fence as a still', () => {

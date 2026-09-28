@@ -138,6 +138,88 @@ const hasFfmpeg =
     expect((probe.output as { duration: number }).duration).toBeCloseTo(2, 0);
   }, 60000);
 
+  /**
+   * #818. The fixture's tone is mono; an un-narrated cut must still write the
+   * 48 kHz stereo layout a narrated cut writes, or a concat of the two takes
+   * the first part's layout and loses the voice after it.
+   */
+  it('an un-narrated cut of a mono source writes the same 48 kHz stereo audio as a narrated one', async () => {
+    const audioOf = async (key: string) => {
+      const local = path.join(baseDir, 'probe-' + path.basename(key));
+      await fs.writeFile(local, await adapter.download(key));
+      const r = spawnSync('ffprobe', [
+        '-v',
+        'error',
+        '-select_streams',
+        'a:0',
+        '-show_entries',
+        'stream=channels,sample_rate',
+        '-of',
+        'json',
+        local,
+      ]);
+      expect(r.status).toBe(0);
+      const s = (
+        JSON.parse(r.stdout.toString()) as { streams: { channels: number; sample_rate: string }[] }
+      ).streams[0];
+      return { channels: s.channels, sampleRate: Number(s.sample_rate) };
+    };
+    expect((await audioOf(SRC_KEY)).channels).toBe(1);
+
+    const voice = path.join(baseDir, 'voice.wav');
+    const gen = spawnSync('ffmpeg', [
+      '-nostdin',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=660:duration=1',
+      '-ac',
+      '1',
+      voice,
+    ]);
+    expect(gen.status).toBe(0);
+    await adapter.upload(await fs.readFile(voice), 'o/r/uploads/it/voice.wav');
+
+    const plain = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'it/source.mp4',
+        spans: [{ start: 0, end: 1 }],
+        output: 'it/plain.mp4',
+      }),
+    );
+    expect(plain.success).toBe(true);
+    const voiced = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'it/source.mp4',
+        spans: [{ start: 2, end: 3 }],
+        audio: 'it/voice.wav',
+        output: 'it/voiced.mp4',
+      }),
+    );
+    expect(voiced.success).toBe(true);
+
+    const a = await audioOf('o/r/uploads/it/plain.mp4');
+    const b = await audioOf('o/r/uploads/it/voiced.mp4');
+    expect(a).toEqual({ channels: 2, sampleRate: 48000 });
+    expect(b).toEqual(a);
+
+    const joined = await handler.execute(
+      context(),
+      step({
+        operation: 'concat',
+        inputs: ['it/plain.mp4', 'it/voiced.mp4'],
+        output: 'it/joined.mp4',
+      }),
+    );
+    expect(joined.success).toBe(true);
+    expect(await audioOf('o/r/uploads/it/joined.mp4')).toEqual({ channels: 2, sampleRate: 48000 });
+  }, 60000);
+
   it('concat stream-copies two slices into one clip of summed duration', async () => {
     for (const [i, span] of [
       { start: 0, end: 1 },

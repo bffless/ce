@@ -124,7 +124,10 @@ export function buildSliceArgs(opts: {
   let audio = '[aout]';
   const extraInputs: string[] = [];
   let outputLength: string[] = spans.length === 1 ? ['-to', secs(spans[0].end)] : [];
-  let profile = ENCODE_PROFILE(opts.threads);
+  // Every cut, narrated or not, writes the one audio layout cards and narrated
+  // cuts share (#818): a phone's mono cut beside stereo parts made `concat`
+  // take the first part's layout and lose every voice after the mono part.
+  const profile = [...ENCODE_PROFILE(opts.threads), ...NARRATION_AUDIO];
   if (narration !== undefined) {
     const span = spans[0].end - spans[0].start;
     const total = narrationTotal(span, narration.seconds);
@@ -143,7 +146,6 @@ export function buildSliceArgs(opts: {
     audio = '[amix]';
     extraInputs.push('-i', narration.input);
     outputLength = ['-t', secs(total)];
-    profile = [...profile, ...NARRATION_AUDIO];
   }
   if (opts.overlay !== undefined) {
     graph += `;${video}${drawtextFilter(opts.overlay)}[vdraw]`;
@@ -184,7 +186,7 @@ export interface SliceNarration {
   original: number;
 }
 
-/** Narrated cuts and cards share one audio layout, so `concat` can stream-copy them together. */
+/** Every cut and card shares one audio layout, so `concat` can stream-copy them together (#818). */
 const NARRATION_SAMPLE_RATE = 48000;
 const NARRATION_AUDIO = ['-ar', String(NARRATION_SAMPLE_RATE), '-ac', '2'];
 
