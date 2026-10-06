@@ -12,6 +12,7 @@ import {
 } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CreatePipelineSchemaDto, UpdatePipelineSchemaDto } from './dto';
+import { indexedFieldNames, PipelineDataIndexesService } from './pipeline-data-indexes.service';
 
 export interface SchemaWithCount extends PipelineSchema {
   recordCount: number;
@@ -21,7 +22,10 @@ export interface SchemaWithCount extends PipelineSchema {
 export class PipelineSchemasService {
   private readonly logger = new Logger(PipelineSchemasService.name);
 
-  constructor(private readonly permissionsService: PermissionsService) {}
+  constructor(
+    private readonly permissionsService: PermissionsService,
+    private readonly indexes: PipelineDataIndexesService,
+  ) {}
 
   /**
    * Get all schemas for a project with record counts
@@ -132,6 +136,7 @@ export class PipelineSchemasService {
       .returning();
 
     this.logger.log(`Created schema '${dto.name}' (${schema.id}) for project ${dto.projectId}`);
+    await this.indexes.reconcile(schema.id, schema.fields);
 
     return schema;
   }
@@ -189,9 +194,38 @@ export class PipelineSchemasService {
         `Adopted fields onto schema ${id} for rule set "${source.ruleSetName}" ` +
           `(now ${fields.length} fields, version ${expectedVersion} → ${updated.version})`,
       );
+      await this.indexes.reconcile(id, updated.fields);
     }
 
     return updated ?? null;
+  }
+
+  /**
+   * Set which of a schema's fields are indexed — the rules-as-code sync's index
+   * adoption. Like {@link adoptKind}, a narrow declaration that does NOT bump
+   * `version`: an index changes how rows are found, not what a row is. The
+   * caller has established that the syncing rule set owns the schema; the
+   * fields themselves (names, types, required) are left as they are, only the
+   * `indexed` flag of each is written. Returns the names now indexed.
+   */
+  async adoptIndexes(id: string, indexed: readonly string[]): Promise<string[]> {
+    const existing = await this.getById(id);
+    if (!existing) throw new NotFoundException(`Schema ${id} not found`);
+    const wanted = new Set(indexed);
+    const fields = existing.fields.map((f) => {
+      const { indexed: _was, ...rest } = f;
+      return wanted.has(f.name) ? { ...rest, indexed: true } : rest;
+    });
+    const [updated] = await db
+      .update(pipelineSchemas)
+      .set({ fields, updatedAt: new Date() })
+      .where(eq(pipelineSchemas.id, id))
+      .returning();
+    this.logger.log(
+      `Indexed fields of schema ${id}: ${indexedFieldNames(fields).join(', ') || 'none'}`,
+    );
+    await this.indexes.reconcile(id, updated.fields);
+    return indexedFieldNames(updated.fields);
   }
 
   /**
@@ -250,6 +284,7 @@ export class PipelineSchemasService {
       .returning();
 
     this.logger.log(`Updated schema ${id}`);
+    if (dto.fields !== undefined) await this.indexes.reconcile(id, updated.fields);
 
     return updated;
   }
@@ -279,6 +314,7 @@ export class PipelineSchemasService {
     await db.delete(pipelineSchemas).where(eq(pipelineSchemas.id, id));
 
     this.logger.log(`Deleted schema ${id}`);
+    await this.indexes.dropAll(id);
   }
 
   // ==================== Helper Methods ====================

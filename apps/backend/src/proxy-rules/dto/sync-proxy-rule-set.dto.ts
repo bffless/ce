@@ -342,6 +342,15 @@ export class SyncSchemaResolutionDto {
       '(under dryRun: the fields that would be). Empty when nothing was adopted or the schema was created.',
   })
   fieldsAdopted: string[];
+
+  @ApiProperty({
+    type: [String],
+    description:
+      "Names of the reused schema's fields whose `indexed` flag was set to match the payload, on a " +
+      'schema this rule set owns (under dryRun: the fields that would be). An index is created or ' +
+      'dropped on pipeline_data accordingly. Empty when the payload and the live schema agree or the schema was created.',
+  })
+  indexesAdopted: string[];
 }
 
 /**

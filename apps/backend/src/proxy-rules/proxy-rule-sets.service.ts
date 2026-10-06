@@ -58,6 +58,7 @@ import { collectSchemaIds, remapSchemaIds } from './schema-refs.util';
 import {
   compareSchemaFields,
   planFieldAdoption,
+  planIndexAdoption,
   type ComparableSchemaField,
   type FieldAdoptionPlan,
   type SchemaResolution,
@@ -908,6 +909,7 @@ export class ProxyRuleSetsService {
       plan: FieldAdoptionPlan;
       resolution: SchemaResolution;
     }[] = [];
+    const pendingIndexAdoptions: { schemaId: string; indexed: string[] }[] = [];
     const strictFailures: string[] = [];
     // Loaded at most once per resolve, and only when an unstamped schema is a
     // field-adoption candidate (see fieldAdoptionBlocker).
@@ -966,6 +968,31 @@ export class ProxyRuleSetsService {
         }
         if (kindAdopted) pendingKindAdoptions.push({ schemaId: existing.id, kind: schema.kind! });
 
+        // Index adoption: the app says in its schema which fields it filters on,
+        // and a sync by the set that owns the schema applies that, added or taken
+        // away. Not opt-in like fields (an index changes no row and breaks no
+        // reader) but owned like them: another set's push never re-indexes this one.
+        let indexesAdopted: string[] = [];
+        const indexPlan = planIndexAdoption(schema.fields, existing.fields);
+        if (indexPlan.changed.length > 0) {
+          const blocker = await this.fieldAdoptionBlocker(
+            existing,
+            schema.id,
+            options,
+            loadProjectSchemaRefs,
+          );
+          if (blocker) {
+            warnings.push(
+              `Schema "${schema.name}": indexed field(s) ${indexPlan.changed
+                .map((f) => `"${f}"`)
+                .join(', ')} not adopted — ${blocker}`,
+            );
+          } else {
+            indexesAdopted = indexPlan.changed;
+            pendingIndexAdoptions.push({ schemaId: existing.id, indexed: indexPlan.indexed });
+          }
+        }
+
         const resolution: SchemaResolution = {
           name: schema.name,
           action: 'reuse',
@@ -973,6 +1000,7 @@ export class ProxyRuleSetsService {
           fieldMismatch: effectiveMismatches.length > 0,
           kindAdopted,
           fieldsAdopted,
+          indexesAdopted,
         };
         resolutions.push(resolution);
         if (adoptionPlan) {
@@ -992,6 +1020,7 @@ export class ProxyRuleSetsService {
           // payload field from birth; nothing was adopted onto an existing row.
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdopted: [],
         };
         resolutions.push(resolution);
         pendingCreates.push({ schema, resolution });
@@ -1014,6 +1043,9 @@ export class ProxyRuleSetsService {
         : undefined;
       for (const { schemaId, kind } of pendingKindAdoptions) {
         await this.pipelineSchemasService.adoptKind(schemaId, kind);
+      }
+      for (const { schemaId, indexed } of pendingIndexAdoptions) {
+        await this.pipelineSchemasService.adoptIndexes(schemaId, indexed);
       }
       for (const pending of pendingFieldAdoptions) {
         // `stamp` is always set here: adoption is only planned when

@@ -12,6 +12,7 @@ export interface ComparableSchemaField {
   type: SchemaField['type'];
   required?: boolean;
   default?: unknown;
+  indexed?: boolean;
 }
 
 /**
@@ -44,6 +45,41 @@ export interface SchemaResolution {
    * carries every payload field from birth) and whenever nothing was adopted.
    */
   fieldsAdopted: string[];
+  /**
+   * Names of the fields whose `indexed` flag the sync set to match the payload,
+   * on a schema this rule set owns (planned only, under dryRun). An index is
+   * the app's declaration of what it filters on (`PipelineDataIndexesService`);
+   * like `kind` it changes nothing about the rows, so it is adopted without a
+   * version bump, and unlike fields it may be taken away as well as added.
+   * Empty when the payload and the live schema already agree.
+   */
+  indexesAdopted: string[];
+}
+
+/**
+ * The fields whose `indexed` flag differs between the payload and the live
+ * schema, by name: what index adoption would change. Only fields present on
+ * both sides count (a payload-only field is field adoption's business). Pure.
+ */
+export function planIndexAdoption(
+  incoming: ComparableSchemaField[],
+  existing: ComparableSchemaField[],
+): { changed: string[]; indexed: string[] } {
+  const incomingByName = new Map(incoming.map((f) => [f.name, f]));
+  const changed: string[] = [];
+  for (const live of existing) {
+    const payload = incomingByName.get(live.name);
+    if (!payload) continue;
+    if ((payload.indexed ?? false) !== (live.indexed ?? false)) changed.push(live.name);
+  }
+  // The payload's say for a field it has (absent reads as false), the live flag for one it lacks.
+  const indexed = existing
+    .filter((live) => {
+      const payload = incomingByName.get(live.name);
+      return (payload ? (payload.indexed ?? false) : (live.indexed ?? false)) === true;
+    })
+    .map((f) => f.name);
+  return { changed, indexed };
 }
 
 /**

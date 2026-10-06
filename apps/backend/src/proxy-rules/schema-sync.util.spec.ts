@@ -1,6 +1,7 @@
 import {
   compareSchemaFields,
   planFieldAdoption,
+  planIndexAdoption,
   type ComparableSchemaField,
 } from './schema-sync.util';
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
@@ -105,6 +106,44 @@ describe('schema-sync.util', () => {
     });
   });
   /** bffless/ce#721 — the only shape the sync will ever write onto a live schema. */
+  describe('planIndexAdoption', () => {
+    const live = [
+      { name: 'id', type: 'string' as const, required: true },
+      { name: 'status', type: 'string' as const, required: false, indexed: true },
+    ];
+    it('names the fields whose indexed flag differs, and the set that would then be indexed', () => {
+      const plan = planIndexAdoption(
+        [
+          { name: 'id', type: 'string', required: true, indexed: true },
+          { name: 'status', type: 'string', required: false },
+        ],
+        live,
+      );
+      expect(plan).toEqual({ changed: ['id', 'status'], indexed: ['id'] });
+    });
+    it('agrees when the flags match, absent reading as false', () => {
+      expect(
+        planIndexAdoption(
+          [
+            { name: 'id', type: 'string' },
+            { name: 'status', type: 'string', indexed: true },
+          ],
+          live,
+        ),
+      ).toEqual({ changed: [], indexed: ['status'] });
+    });
+    it("ignores a payload-only field (field adoption's business) and keeps a live-only field as it is", () => {
+      const plan = planIndexAdoption(
+        [
+          { name: 'id', type: 'string', indexed: true },
+          { name: 'extra', type: 'string', indexed: true },
+        ],
+        live,
+      );
+      expect(plan).toEqual({ changed: ['id'], indexed: ['id', 'status'] });
+    });
+  });
+
   describe('planFieldAdoption', () => {
     const live: SchemaField[] = [
       { name: 'id', type: 'string', required: true },

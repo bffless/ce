@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { PipelineSchemasController } from './pipeline-schemas.controller';
 import { PipelineDataController } from './pipeline-data.controller';
 import { PipelineSchemasService } from './pipeline-schemas.service';
+import { PipelineDataIndexesService } from './pipeline-data-indexes.service';
 import { PipelineDataService } from './pipeline-data.service';
 import { StateSchemaGeneratorService } from './state-schema-generator.service';
 import { ChatSchemaGeneratorService } from './chat-schema-generator.service';
@@ -127,6 +128,7 @@ import {
   providers: [
     // Core services
     PipelineSchemasService,
+    PipelineDataIndexesService,
     PipelineDataService,
     StateSchemaGeneratorService,
     ChatSchemaGeneratorService,

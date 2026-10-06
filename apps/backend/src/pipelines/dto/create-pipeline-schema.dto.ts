@@ -45,6 +45,15 @@ export class SchemaFieldDto {
   })
   @IsOptional()
   default?: unknown;
+
+  @ApiPropertyOptional({
+    description:
+      "Index this field for filtering: a data_query filter on it becomes an index lookup instead of a scan of the schema's rows. For string, number, boolean, email and datetime fields; ignored for text and json.",
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  indexed?: boolean;
 }
 
 export class CreatePipelineSchemaDto {
