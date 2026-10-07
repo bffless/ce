@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.64](https://github.com/bffless/ce/compare/v0.4.63...v0.4.64) (2026-10-07)
+
+
+### Added
+
+* **frontend:** the schema editor sets and the field list shows a field's index ([#822](https://github.com/bffless/ce/issues/822)) ([80ab663](https://github.com/bffless/ce/commit/80ab663d547a98a55fcd658dd9db1b71db7d8ae3))
+* **pipelines:** a schema field marked indexed gets its own index on pipeline_data ([#821](https://github.com/bffless/ce/issues/821)) ([490b027](https://github.com/bffless/ce/commit/490b027680503f910cfa0495c1669711fe91b1c6))
+
+
+### Fixed
+
+* **ffmpeg:** an un-narrated slice writes 48 kHz stereo audio like a narrated one ([#819](https://github.com/bffless/ce/issues/819)) ([3cbc6c8](https://github.com/bffless/ce/commit/3cbc6c84a5157053b3c9108a438f327e104616b1)), closes [#818](https://github.com/bffless/ce/issues/818)
+
 ## [0.4.63](https://github.com/bffless/ce/compare/v0.4.62...v0.4.63) (2026-09-27)
 
 ### Fixed
