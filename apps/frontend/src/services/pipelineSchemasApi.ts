@@ -16,7 +16,24 @@ export interface SchemaField {
   type: SchemaFieldType;
   required: boolean;
   default?: unknown;
+  /**
+   * The field is filtered on, so the backend keeps an index on it for this schema
+   * (a data_query filter on it is a lookup, not a scan of the schema's rows).
+   * For scalar types only: see INDEXABLE_FIELD_TYPES.
+   */
+  indexed?: boolean;
 }
+
+/** The field types an index applies to; `text` and `json` are not indexed. */
+export const INDEXABLE_FIELD_TYPES: readonly SchemaFieldType[] = [
+  'string',
+  'number',
+  'boolean',
+  'email',
+  'datetime',
+];
+export const isIndexableFieldType = (type: SchemaFieldType): boolean =>
+  INDEXABLE_FIELD_TYPES.includes(type);
 
 /** What a schema is for, as declared at creation. Null = not declared. */
 export type SchemaKind = 'upload' | 'chat' | 'state';

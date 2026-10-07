@@ -21,6 +21,7 @@ import {
   useUpdateSchemaMutation,
   SchemaField,
   SchemaFieldType,
+  isIndexableFieldType,
 } from '@/services/pipelineSchemasApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useToast } from '@/hooks/use-toast';
@@ -100,7 +101,15 @@ export function SchemaEditorPage() {
   };
 
   const handleFieldChange = (index: number, updates: Partial<SchemaField>) => {
-    setFields(fields.map((field, i) => (i === index ? { ...field, ...updates } : field)));
+    setFields(
+      fields.map((field, i) => {
+        if (i !== index) return field;
+        const next = { ...field, ...updates };
+        // An index is for scalar types: a change to text or json takes the flag with it.
+        if (updates.type !== undefined && !isIndexableFieldType(updates.type)) delete next.indexed;
+        return next;
+      }),
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -279,7 +288,7 @@ export function SchemaEditorPage() {
                     key={index}
                     className="flex items-start gap-3 p-3 border rounded-md bg-muted/30"
                   >
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs text-muted-foreground">Name</Label>
                         <Input
@@ -318,6 +327,26 @@ export function SchemaEditorPage() {
                             }
                           />
                           <span className="ml-2 text-sm text-muted-foreground">Required</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Indexed</Label>
+                        <div
+                          className="flex items-center h-10"
+                          title={
+                            isIndexableFieldType(field.type)
+                              ? 'Keep an index on this field: a filter on it is a lookup, not a scan of every record'
+                              : 'Text and JSON fields are not indexed'
+                          }
+                        >
+                          <Checkbox
+                            checked={field.indexed === true}
+                            disabled={!isIndexableFieldType(field.type)}
+                            onCheckedChange={(checked) =>
+                              handleFieldChange(index, { indexed: checked ? true : undefined })
+                            }
+                          />
+                          <span className="ml-2 text-sm text-muted-foreground">Indexed</span>
                         </div>
                       </div>
                       <div className="space-y-1">

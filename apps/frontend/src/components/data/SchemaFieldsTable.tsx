@@ -42,6 +42,7 @@ export function SchemaFieldsTable({ fields }: SchemaFieldsTableProps) {
             <TableHead>Name</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Required</TableHead>
+            <TableHead>Indexed</TableHead>
             <TableHead>Default</TableHead>
           </TableRow>
         </TableHeader>
@@ -62,6 +63,15 @@ export function SchemaFieldsTable({ fields }: SchemaFieldsTableProps) {
                     <Badge variant="default">Required</Badge>
                   ) : (
                     <span className="text-muted-foreground">Optional</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {field.indexed ? (
+                    <Badge variant="secondary" title="A filter on this field is an index lookup">
+                      Indexed
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
