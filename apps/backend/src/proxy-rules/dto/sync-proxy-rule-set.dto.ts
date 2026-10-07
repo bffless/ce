@@ -342,6 +342,23 @@ export class SyncSchemaResolutionDto {
       '(under dryRun: the fields that would be). Empty when nothing was adopted or the schema was created.',
   })
   fieldsAdopted: string[];
+
+  @ApiProperty({
+    type: [String],
+    description:
+      "Names of the reused schema's fields marked indexed because the payload declares `indexed: true`, on a " +
+      'schema this rule set owns (under dryRun: the fields that would be). An index is created on pipeline_data. ' +
+      'Empty when the payload and the live schema agree or the schema was created.',
+  })
+  indexesAdded: string[];
+
+  @ApiProperty({
+    type: [String],
+    description:
+      "Names of the reused schema's fields un-marked because the payload declares `indexed: false` explicitly " +
+      '(a payload that omits the key leaves an index as it is). The index is dropped, and a warning says so.',
+  })
+  indexesRemoved: string[];
 }
 
 /**

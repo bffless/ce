@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { ProxyRuleSetsService } from './proxy-rule-sets.service';
 import { ProxyRulesService } from './proxy-rules.service';
@@ -112,6 +118,7 @@ describe('ProxyRuleSetsService', () => {
     create: jest.fn(),
     adoptKind: jest.fn(),
     adoptFields: jest.fn(),
+    adoptIndexes: jest.fn(),
   };
 
   // Plain-object mock, per the brief: the DB-mock result slots must not change
@@ -688,6 +695,8 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: false,
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         },
       ]);
       expect(result.warnings).toEqual([]);
@@ -711,6 +720,8 @@ describe('ProxyRuleSetsService', () => {
         fieldMismatch: true,
         kindAdopted: false,
         fieldsAdopted: [],
+        indexesAdded: [],
+        indexesRemoved: [],
       });
       expect(result.warnings).toEqual([
         'Schema "comments": field "body": type string (incoming) vs text (existing)',
@@ -773,6 +784,8 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: false,
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         },
       ]);
       expect(result.warnings).toEqual([]);
@@ -793,6 +806,8 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: false,
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         },
       ]);
       expect(result.idMap.has('src-1')).toBe(false);
@@ -823,6 +838,8 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: false,
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         },
         {
           name: 'votes',
@@ -831,6 +848,8 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: true,
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         },
         {
           name: 'brand-new',
@@ -839,6 +858,8 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: false,
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         },
       ]);
       expect(result.warnings).toEqual([
@@ -906,6 +927,8 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: false,
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         },
       ]);
       expect(result.idMap.get('src-1')).toBe('existing-comments-id');
@@ -1703,6 +1726,8 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: false,
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         },
       ]);
       expect(result.created).toEqual([{ pathPattern: '/api/comments', method: 'GET' }]);
@@ -1897,6 +1922,8 @@ describe('ProxyRuleSetsService', () => {
             fieldMismatch: false,
             kindAdopted: false,
             fieldsAdopted: ['unattended'],
+            indexesAdded: [],
+            indexesRemoved: [],
           },
         ]);
         expect(result.warnings).toEqual([]);
@@ -1932,6 +1959,160 @@ describe('ProxyRuleSetsService', () => {
           fieldsAdopted: ['unattended'],
         });
         expect(result.warnings).toEqual([]);
+      });
+
+      /**
+       * Index adoption: the app declares `indexed: true` on the fields its rules
+       * filter on, and a sync by the owning set applies it (added or taken away),
+       * without opt-in and without a version bump. Another set's push never
+       * re-indexes a schema it does not own.
+       */
+      describe('index adoption', () => {
+        const indexedPayload = () =>
+          payloadSchema([
+            { name: 'id', type: 'string', required: true, indexed: true },
+            { name: 'status', type: 'string', required: false },
+          ]);
+
+        it('marks a field indexed on a schema this set owns when the payload declares indexed: true', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+          mockPipelineSchemasService.adoptIndexes.mockResolvedValue(['id']);
+
+          const result = await sync(
+            syncDto({ rules: [referencingRule()], schemas: [indexedPayload()] }),
+          );
+
+          expect(mockPipelineSchemasService.adoptIndexes).toHaveBeenCalledWith('live-runs', ['id']);
+          expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+          expect(result.schemaResolutions[0]).toMatchObject({
+            fieldMismatch: false,
+            fieldsAdopted: [],
+            indexesAdded: ['id'],
+            indexesRemoved: [],
+          });
+          expect(result.warnings).toEqual([]);
+        });
+
+        it('a payload that says nothing about a field leaves its index alone: an index set in the dashboard survives a push', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+            ownedSchema({ fields: [{ ...liveFields[0], indexed: true }, liveFields[1]] }),
+          ]);
+
+          const result = await sync(
+            syncDto({ rules: [referencingRule()], schemas: [payloadSchema(liveFields)] }),
+          );
+
+          expect(mockPipelineSchemasService.adoptIndexes).not.toHaveBeenCalled();
+          expect(result.schemaResolutions[0]).toMatchObject({
+            indexesAdded: [],
+            indexesRemoved: [],
+          });
+          expect(result.warnings).toEqual([]);
+        });
+
+        it('takes an index away only on an explicit indexed: false, and says so', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+            ownedSchema({ fields: [{ ...liveFields[0], indexed: true }, liveFields[1]] }),
+          ]);
+          mockPipelineSchemasService.adoptIndexes.mockResolvedValue([]);
+
+          const result = await sync(
+            syncDto({
+              rules: [referencingRule()],
+              schemas: [payloadSchema([{ ...liveFields[0], indexed: false }, liveFields[1]])],
+            }),
+          );
+
+          expect(mockPipelineSchemasService.adoptIndexes).toHaveBeenCalledWith('live-runs', []);
+          expect(result.schemaResolutions[0]).toMatchObject({
+            indexesAdded: [],
+            indexesRemoved: ['id'],
+          });
+          expect(result.warnings).toEqual([
+            'Schema "workflow_runs": index removed from field(s) "id" — the payload declares indexed: false',
+          ]);
+        });
+
+        it('a version race on the index adoption is a warning, not an aborted sync', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+          mockPipelineSchemasService.adoptIndexes.mockRejectedValue(
+            new ConflictException('changed'),
+          );
+
+          const result = await sync(
+            syncDto({ rules: [referencingRule()], schemas: [indexedPayload()] }),
+          );
+
+          expect(result.schemaResolutions[0]).toMatchObject({
+            indexesAdded: [],
+            indexesRemoved: [],
+          });
+          expect(result.warnings).toEqual([
+            'Schema "workflow_runs": indexed fields not adopted — the schema changed while the sync ran; push again',
+          ]);
+        });
+
+        it('does not re-index a schema another set owns: warning, no write', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+            ownedSchema({ source: { ruleSetName: 'other-app', syncedAt: '2026-08-01T00:00:00Z' } }),
+          ]);
+
+          const result = await sync(
+            syncDto({ rules: [referencingRule()], schemas: [indexedPayload()] }),
+          );
+
+          expect(mockPipelineSchemasService.adoptIndexes).not.toHaveBeenCalled();
+          expect(result.schemaResolutions[0]).toMatchObject({
+            indexesAdded: [],
+            indexesRemoved: [],
+          });
+          expect(result.warnings).toEqual([
+            expect.stringMatching(
+              /^Schema "workflow_runs": indexed field\(s\) "id" not adopted — /,
+            ),
+          ]);
+        });
+
+        it('dryRun: reports the would-be adoption and writes nothing', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+          const result = await sync(
+            syncDto({
+              rules: [referencingRule()],
+              schemas: [indexedPayload()],
+              options: { dryRun: true },
+            }),
+          );
+
+          expect(mockPipelineSchemasService.adoptIndexes).not.toHaveBeenCalled();
+          expect(result.schemaResolutions[0]).toMatchObject({ indexesAdded: ['id'] });
+        });
+
+        it('nothing to adopt when the payload and the live schema agree', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+            ownedSchema({ fields: [{ ...liveFields[0], indexed: true }, liveFields[1]] }),
+          ]);
+
+          const result = await sync(
+            syncDto({
+              rules: [referencingRule()],
+              schemas: [payloadSchema([{ ...liveFields[0], indexed: true }, liveFields[1]])],
+            }),
+          );
+
+          expect(mockPipelineSchemasService.adoptIndexes).not.toHaveBeenCalled();
+          expect(result.schemaResolutions[0]).toMatchObject({
+            indexesAdded: [],
+            indexesRemoved: [],
+          });
+        });
       });
 
       it('satisfies strictSchemas: an adopted diff is no longer a mismatch', async () => {

@@ -1,6 +1,7 @@
 import {
   compareSchemaFields,
   planFieldAdoption,
+  planIndexAdoption,
   type ComparableSchemaField,
 } from './schema-sync.util';
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
@@ -105,6 +106,61 @@ describe('schema-sync.util', () => {
     });
   });
   /** bffless/ce#721 — the only shape the sync will ever write onto a live schema. */
+  describe('planIndexAdoption', () => {
+    const live = [
+      { name: 'id', type: 'string' as const, required: true },
+      { name: 'status', type: 'string' as const, required: false, indexed: true },
+    ];
+    it('adds on indexed: true, removes on an explicit indexed: false, and says what is indexed after', () => {
+      const plan = planIndexAdoption(
+        [
+          { name: 'id', type: 'string', required: true, indexed: true },
+          { name: 'status', type: 'string', required: false, indexed: false },
+        ],
+        live,
+      );
+      expect(plan).toEqual({ add: ['id'], remove: ['status'], indexed: ['id'] });
+    });
+    it('a payload field with no indexed key has no opinion: the live flag stands', () => {
+      expect(
+        planIndexAdoption(
+          [
+            { name: 'id', type: 'string' },
+            { name: 'status', type: 'string' },
+          ],
+          live,
+        ),
+      ).toEqual({ add: [], remove: [], indexed: ['status'] });
+    });
+    it('agrees when the flags match', () => {
+      expect(
+        planIndexAdoption(
+          [
+            { name: 'id', type: 'string', indexed: false },
+            { name: 'status', type: 'string', indexed: true },
+          ],
+          live,
+        ),
+      ).toEqual({ add: [], remove: [], indexed: ['status'] });
+    });
+    it('a flag on a text or json field is no opinion', () => {
+      const liveText = [{ name: 'notes', type: 'text' as const, required: false }];
+      expect(planIndexAdoption([{ name: 'notes', type: 'text', indexed: true }], liveText)).toEqual(
+        { add: [], remove: [], indexed: [] },
+      );
+    });
+    it("ignores a payload-only field (field adoption's business) and keeps a live-only field as it is", () => {
+      const plan = planIndexAdoption(
+        [
+          { name: 'id', type: 'string', indexed: true },
+          { name: 'extra', type: 'string', indexed: true },
+        ],
+        live,
+      );
+      expect(plan).toEqual({ add: ['id'], remove: [], indexed: ['id', 'status'] });
+    });
+  });
+
   describe('planFieldAdoption', () => {
     const live: SchemaField[] = [
       { name: 'id', type: 'string', required: true },

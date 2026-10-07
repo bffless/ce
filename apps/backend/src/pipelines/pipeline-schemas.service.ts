@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { eq, and, count, isNull } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
@@ -12,6 +18,12 @@ import {
 } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CreatePipelineSchemaDto, UpdatePipelineSchemaDto } from './dto';
+import {
+  indexedFieldNames,
+  INDEXABLE_FIELD_TYPES,
+  isIndexable,
+  PipelineDataIndexesService,
+} from './pipeline-data-indexes.service';
 
 export interface SchemaWithCount extends PipelineSchema {
   recordCount: number;
@@ -21,7 +33,10 @@ export interface SchemaWithCount extends PipelineSchema {
 export class PipelineSchemasService {
   private readonly logger = new Logger(PipelineSchemasService.name);
 
-  constructor(private readonly permissionsService: PermissionsService) {}
+  constructor(
+    private readonly permissionsService: PermissionsService,
+    private readonly indexes: PipelineDataIndexesService,
+  ) {}
 
   /**
    * Get all schemas for a project with record counts
@@ -114,6 +129,7 @@ export class PipelineSchemasService {
     if (existing) {
       throw new ConflictException(`A schema with name "${dto.name}" already exists`);
     }
+    checkIndexable(dto.fields);
 
     const [schema] = await db
       .insert(pipelineSchemas)
@@ -132,6 +148,7 @@ export class PipelineSchemasService {
       .returning();
 
     this.logger.log(`Created schema '${dto.name}' (${schema.id}) for project ${dto.projectId}`);
+    await this.indexes.reconcile(schema.id, schema.fields);
 
     return schema;
   }
@@ -189,9 +206,44 @@ export class PipelineSchemasService {
         `Adopted fields onto schema ${id} for rule set "${source.ruleSetName}" ` +
           `(now ${fields.length} fields, version ${expectedVersion} → ${updated.version})`,
       );
+      await this.indexes.reconcile(id, updated.fields);
     }
 
     return updated ?? null;
+  }
+
+  /**
+   * Set which of a schema's fields are indexed — the rules-as-code sync's index
+   * adoption. Like {@link adoptKind}, a narrow declaration that does NOT bump
+   * `version`: an index changes how rows are found, not what a row is. The
+   * caller has established that the syncing rule set owns the schema; the
+   * fields themselves (names, types, required) are left as they are, only the
+   * `indexed` flag of each is written. Returns the names now indexed.
+   */
+  async adoptIndexes(id: string, indexed: readonly string[]): Promise<string[]> {
+    // Optimistic, like adoptFields: the write is conditioned on the version it
+    // read, so a concurrent field change is not clobbered; once more if it moved.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const existing = await this.getById(id);
+      if (!existing) throw new NotFoundException(`Schema ${id} not found`);
+      const wanted = new Set(indexed);
+      const fields = existing.fields.map((f) => {
+        const { indexed: _was, ...rest } = f;
+        return wanted.has(f.name) ? { ...rest, indexed: true } : rest;
+      });
+      const [updated] = await db
+        .update(pipelineSchemas)
+        .set({ fields, updatedAt: new Date() })
+        .where(and(eq(pipelineSchemas.id, id), eq(pipelineSchemas.version, existing.version)))
+        .returning();
+      if (!updated) continue;
+      this.logger.log(
+        `Indexed fields of schema ${id}: ${indexedFieldNames(fields).join(', ') || 'none'}`,
+      );
+      await this.indexes.reconcile(id, updated.fields);
+      return indexedFieldNames(updated.fields);
+    }
+    throw new ConflictException(`Schema ${id} changed while its indexes were being set; try again`);
   }
 
   /**
@@ -237,6 +289,7 @@ export class PipelineSchemasService {
       updateData.version = existing.version + 1;
     }
     if (dto.fields !== undefined) {
+      checkIndexable(dto.fields);
       updateData.fields = dto.fields.map((f) => ({
         ...f,
         required: f.required ?? false,
@@ -250,6 +303,7 @@ export class PipelineSchemasService {
       .returning();
 
     this.logger.log(`Updated schema ${id}`);
+    if (dto.fields !== undefined) await this.indexes.reconcile(id, updated.fields);
 
     return updated;
   }
@@ -279,6 +333,7 @@ export class PipelineSchemasService {
     await db.delete(pipelineSchemas).where(eq(pipelineSchemas.id, id));
 
     this.logger.log(`Deleted schema ${id}`);
+    await this.indexes.dropAll(id);
   }
 
   // ==================== Helper Methods ====================
@@ -291,5 +346,23 @@ export class PipelineSchemasService {
       .limit(1);
 
     return schema || null;
+  }
+}
+
+/**
+ * `indexed` is for the scalar types an index makes sense for (`INDEXABLE_FIELD_TYPES`);
+ * on a `text` or `json` field it is refused rather than stored and silently ignored, so
+ * a dashboard never shows an index that does not exist.
+ */
+function checkIndexable(
+  fields: readonly { name: string; type: string; indexed?: boolean }[],
+): void {
+  const wrong = fields.filter((f) => f.indexed === true && !isIndexable(f.type));
+  if (wrong.length > 0) {
+    throw new BadRequestException(
+      `indexed is for ${INDEXABLE_FIELD_TYPES.join(', ')} fields; not ${wrong
+        .map((f) => `"${f.name}" (${f.type})`)
+        .join(', ')}`,
+    );
   }
 }

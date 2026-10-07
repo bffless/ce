@@ -31,6 +31,12 @@ export interface SchemaField {
   type: SchemaFieldType;
   required: boolean;
   default?: unknown;
+  /**
+   * The field is filtered on, so it gets its own index on `pipeline_data`
+   * (`PipelineDataIndexesService`): an expression index on `data->>'<name>'`
+   * for this schema's rows. Scalar types only; absent means no index.
+   */
+  indexed?: boolean;
 }
 
 /**

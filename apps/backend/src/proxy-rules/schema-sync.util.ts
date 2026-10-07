@@ -1,5 +1,8 @@
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
 
+/** The field types an index applies to: mirrors `INDEXABLE_FIELD_TYPES` in pipeline-data-indexes.service (kept local so this module stays dependency-free). */
+const INDEXABLE_TYPES = new Set(['string', 'number', 'boolean', 'email', 'datetime']);
+
 /**
  * A schema field as it arrives in a sync/export payload. Identical to the DB
  * `SchemaField` except `required` is optional — bundled export entries (and
@@ -12,6 +15,7 @@ export interface ComparableSchemaField {
   type: SchemaField['type'];
   required?: boolean;
   default?: unknown;
+  indexed?: boolean;
 }
 
 /**
@@ -44,6 +48,53 @@ export interface SchemaResolution {
    * carries every payload field from birth) and whenever nothing was adopted.
    */
   fieldsAdopted: string[];
+  /**
+   * Names of the live schema's fields the sync marked `indexed` because the
+   * payload declares `indexed: true` and the live schema did not, on a schema
+   * this rule set owns (planned only, under dryRun). An index is the app's
+   * declaration of what it filters on (`PipelineDataIndexesService`); like
+   * `kind` it changes nothing about the rows, so it is adopted without a
+   * version bump. Empty when the payload and the live schema already agree.
+   */
+  indexesAdded: string[];
+  /**
+   * Names of the live schema's fields the sync un-marked because the payload
+   * declares `indexed: false` EXPLICITLY. A payload that says nothing about a
+   * field's index leaves it as it is: an index set in the dashboard or by the
+   * API is not taken away by a push whose YAML never mentioned it. A removal
+   * is also warned about, so it is never silent.
+   */
+  indexesRemoved: string[];
+}
+
+/**
+ * What index adoption would change, by field name: the live fields the payload
+ * declares `indexed: true` that are not indexed (`add`), and the ones it
+ * declares `indexed: false` that are (`remove`). A payload field with no
+ * `indexed` key has NO OPINION and changes nothing: the flag is tri-state on
+ * the way in (true, false, absent), two-state at rest. Only fields present on
+ * both sides count (a payload-only field is field adoption's business).
+ * `indexed` is the resulting set of indexed field names. Pure.
+ */
+export function planIndexAdoption(
+  incoming: ComparableSchemaField[],
+  existing: ComparableSchemaField[],
+): { add: string[]; remove: string[]; indexed: string[] } {
+  const incomingByName = new Map(incoming.map((f) => [f.name, f]));
+  const add: string[] = [];
+  const remove: string[] = [];
+  const indexed: string[] = [];
+  for (const live of existing) {
+    const payload = incomingByName.get(live.name);
+    const was = live.indexed === true;
+    // A flag on a type that cannot be indexed (text, json) is no opinion either.
+    const says = payload && payload.indexed !== undefined && INDEXABLE_TYPES.has(live.type);
+    const wants = says ? payload.indexed === true : was;
+    if (wants && !was) add.push(live.name);
+    if (!wants && was) remove.push(live.name);
+    if (wants) indexed.push(live.name);
+  }
+  return { add, remove, indexed };
 }
 
 /**

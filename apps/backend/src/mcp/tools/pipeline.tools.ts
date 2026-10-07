@@ -66,6 +66,12 @@ export class PipelineTools {
               .enum(['string', 'number', 'boolean', 'email', 'text', 'datetime', 'json'])
               .describe('Field type'),
             required: z.boolean().optional(),
+            indexed: z
+              .boolean()
+              .optional()
+              .describe(
+                "Index this field for filtering (string, number, boolean, email, datetime): a data_query filter on it becomes a lookup instead of a scan of the schema's rows",
+              ),
             description: z.string().optional(),
           }),
         )
@@ -88,6 +94,7 @@ export class PipelineTools {
         name: string;
         type: SchemaFieldType;
         required?: boolean;
+        indexed?: boolean;
         description?: string;
       }>;
       kind?: SchemaKind;
@@ -100,7 +107,12 @@ export class PipelineTools {
       {
         projectId: args.projectId,
         name: args.name,
-        fields: args.fields.map((f) => ({ name: f.name, type: f.type, required: f.required })),
+        fields: args.fields.map((f) => ({
+          name: f.name,
+          type: f.type,
+          required: f.required,
+          ...(f.indexed !== undefined ? { indexed: f.indexed } : {}),
+        })),
         kind: args.kind,
       },
       user.id,
@@ -139,6 +151,12 @@ export class PipelineTools {
               .enum(['string', 'number', 'boolean', 'email', 'text', 'datetime', 'json'])
               .describe('Field type'),
             required: z.boolean().optional(),
+            indexed: z
+              .boolean()
+              .optional()
+              .describe(
+                "Index this field for filtering (string, number, boolean, email, datetime): a data_query filter on it becomes a lookup instead of a scan of the schema's rows",
+              ),
             description: z.string().optional(),
           }),
         )
@@ -154,6 +172,7 @@ export class PipelineTools {
         name: string;
         type: SchemaFieldType;
         required?: boolean;
+        indexed?: boolean;
         description?: string;
       }>;
     },

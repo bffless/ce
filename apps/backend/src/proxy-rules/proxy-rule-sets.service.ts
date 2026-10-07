@@ -58,6 +58,7 @@ import { collectSchemaIds, remapSchemaIds } from './schema-refs.util';
 import {
   compareSchemaFields,
   planFieldAdoption,
+  planIndexAdoption,
   type ComparableSchemaField,
   type FieldAdoptionPlan,
   type SchemaResolution,
@@ -908,6 +909,12 @@ export class ProxyRuleSetsService {
       plan: FieldAdoptionPlan;
       resolution: SchemaResolution;
     }[] = [];
+    const pendingIndexAdoptions: {
+      schemaId: string;
+      indexed: string[];
+      resolution: SchemaResolution;
+      name: string;
+    }[] = [];
     const strictFailures: string[] = [];
     // Loaded at most once per resolve, and only when an unstamped schema is a
     // field-adoption candidate (see fieldAdoptionBlocker).
@@ -966,6 +973,47 @@ export class ProxyRuleSetsService {
         }
         if (kindAdopted) pendingKindAdoptions.push({ schemaId: existing.id, kind: schema.kind! });
 
+        // Index adoption: the app says in its schema which fields it filters on,
+        // and a sync by the set that owns the schema applies that. Not opt-in like
+        // fields (an index changes no row and breaks no reader) but owned like
+        // them: another set's push never re-indexes this one. Adding needs
+        // `indexed: true`; taking away needs an EXPLICIT `indexed: false` and is
+        // warned about, so a YAML that never mentioned a field's index cannot
+        // silently undo one set in the dashboard (the review of bffless/ce#821).
+        let indexesAdded: string[] = [];
+        let indexesRemoved: string[] = [];
+        let indexAdoption: string[] | undefined;
+        const indexPlan = planIndexAdoption(schema.fields, existing.fields);
+        if (indexPlan.add.length > 0 || indexPlan.remove.length > 0) {
+          const changed = [...indexPlan.add, ...indexPlan.remove];
+          const blocker = await this.fieldAdoptionBlocker(
+            existing,
+            schema.id,
+            options,
+            loadProjectSchemaRefs,
+          );
+          if (blocker) {
+            warnings.push(
+              `Schema "${schema.name}": indexed field(s) ${changed
+                .map((f) => `"${f}"`)
+                .join(', ')} not adopted — ${blocker}`,
+            );
+          } else {
+            indexesAdded = indexPlan.add;
+            indexesRemoved = indexPlan.remove;
+            if (indexesRemoved.length > 0) {
+              warnings.push(
+                `Schema "${schema.name}": index removed from field(s) ${indexesRemoved
+                  .map((f) => `"${f}"`)
+                  .join(', ')} — the payload declares indexed: false${
+                  options.dryRun ? ' (dryRun: would be)' : ''
+                }`,
+              );
+            }
+            indexAdoption = indexPlan.indexed;
+          }
+        }
+
         const resolution: SchemaResolution = {
           name: schema.name,
           action: 'reuse',
@@ -973,8 +1021,18 @@ export class ProxyRuleSetsService {
           fieldMismatch: effectiveMismatches.length > 0,
           kindAdopted,
           fieldsAdopted,
+          indexesAdded,
+          indexesRemoved,
         };
         resolutions.push(resolution);
+        if (indexAdoption) {
+          pendingIndexAdoptions.push({
+            schemaId: existing.id,
+            indexed: indexAdoption,
+            resolution,
+            name: schema.name,
+          });
+        }
         if (adoptionPlan) {
           pendingFieldAdoptions.push({ schema, existing, plan: adoptionPlan, resolution });
         }
@@ -992,6 +1050,8 @@ export class ProxyRuleSetsService {
           // payload field from birth; nothing was adopted onto an existing row.
           kindAdopted: false,
           fieldsAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         };
         resolutions.push(resolution);
         pendingCreates.push({ schema, resolution });
@@ -1014,6 +1074,21 @@ export class ProxyRuleSetsService {
         : undefined;
       for (const { schemaId, kind } of pendingKindAdoptions) {
         await this.pipelineSchemasService.adoptKind(schemaId, kind);
+      }
+      for (const pending of pendingIndexAdoptions) {
+        // A version race (a concurrent edit of the schema) degrades to a warning, as a
+        // field adoption's does: one schema's conflict must not abort a sync whose
+        // earlier adoptions already landed. The indexes stay as they were.
+        try {
+          await this.pipelineSchemasService.adoptIndexes(pending.schemaId, pending.indexed);
+        } catch (error) {
+          if (!(error instanceof ConflictException)) throw error;
+          pending.resolution.indexesAdded = [];
+          pending.resolution.indexesRemoved = [];
+          warnings.push(
+            `Schema "${pending.name}": indexed fields not adopted — the schema changed while the sync ran; push again`,
+          );
+        }
       }
       for (const pending of pendingFieldAdoptions) {
         // `stamp` is always set here: adoption is only planned when
