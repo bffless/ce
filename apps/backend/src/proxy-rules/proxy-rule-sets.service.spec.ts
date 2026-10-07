@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { ProxyRuleSetsService } from './proxy-rule-sets.service';
 import { ProxyRulesService } from './proxy-rules.service';
@@ -2027,6 +2033,26 @@ describe('ProxyRuleSetsService', () => {
           });
           expect(result.warnings).toEqual([
             'Schema "workflow_runs": index removed from field(s) "id" — the payload declares indexed: false',
+          ]);
+        });
+
+        it('a version race on the index adoption is a warning, not an aborted sync', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+          mockPipelineSchemasService.adoptIndexes.mockRejectedValue(
+            new ConflictException('changed'),
+          );
+
+          const result = await sync(
+            syncDto({ rules: [referencingRule()], schemas: [indexedPayload()] }),
+          );
+
+          expect(result.schemaResolutions[0]).toMatchObject({
+            indexesAdded: [],
+            indexesRemoved: [],
+          });
+          expect(result.warnings).toEqual([
+            'Schema "workflow_runs": indexed fields not adopted — the schema changed while the sync ran; push again',
           ]);
         });
 

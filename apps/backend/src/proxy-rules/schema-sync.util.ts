@@ -1,5 +1,8 @@
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
 
+/** The field types an index applies to: mirrors `INDEXABLE_FIELD_TYPES` in pipeline-data-indexes.service (kept local so this module stays dependency-free). */
+const INDEXABLE_TYPES = new Set(['string', 'number', 'boolean', 'email', 'datetime']);
+
 /**
  * A schema field as it arrives in a sync/export payload. Identical to the DB
  * `SchemaField` except `required` is optional — bundled export entries (and
@@ -84,7 +87,9 @@ export function planIndexAdoption(
   for (const live of existing) {
     const payload = incomingByName.get(live.name);
     const was = live.indexed === true;
-    const wants = payload && payload.indexed !== undefined ? payload.indexed === true : was;
+    // A flag on a type that cannot be indexed (text, json) is no opinion either.
+    const says = payload && payload.indexed !== undefined && INDEXABLE_TYPES.has(live.type);
+    const wants = says ? payload.indexed === true : was;
     if (wants && !was) add.push(live.name);
     if (!wants && was) remove.push(live.name);
     if (wants) indexed.push(live.name);

@@ -143,6 +143,12 @@ describe('schema-sync.util', () => {
         ),
       ).toEqual({ add: [], remove: [], indexed: ['status'] });
     });
+    it('a flag on a text or json field is no opinion', () => {
+      const liveText = [{ name: 'notes', type: 'text' as const, required: false }];
+      expect(planIndexAdoption([{ name: 'notes', type: 'text', indexed: true }], liveText)).toEqual(
+        { add: [], remove: [], indexed: [] },
+      );
+    });
     it("ignores a payload-only field (field adoption's business) and keeps a live-only field as it is", () => {
       const plan = planIndexAdoption(
         [

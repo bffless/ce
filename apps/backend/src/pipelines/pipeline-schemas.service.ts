@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { eq, and, count, isNull } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
@@ -12,7 +18,12 @@ import {
 } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CreatePipelineSchemaDto, UpdatePipelineSchemaDto } from './dto';
-import { indexedFieldNames, PipelineDataIndexesService } from './pipeline-data-indexes.service';
+import {
+  indexedFieldNames,
+  INDEXABLE_FIELD_TYPES,
+  isIndexable,
+  PipelineDataIndexesService,
+} from './pipeline-data-indexes.service';
 
 export interface SchemaWithCount extends PipelineSchema {
   recordCount: number;
@@ -118,6 +129,7 @@ export class PipelineSchemasService {
     if (existing) {
       throw new ConflictException(`A schema with name "${dto.name}" already exists`);
     }
+    checkIndexable(dto.fields);
 
     const [schema] = await db
       .insert(pipelineSchemas)
@@ -277,6 +289,7 @@ export class PipelineSchemasService {
       updateData.version = existing.version + 1;
     }
     if (dto.fields !== undefined) {
+      checkIndexable(dto.fields);
       updateData.fields = dto.fields.map((f) => ({
         ...f,
         required: f.required ?? false,
@@ -333,5 +346,23 @@ export class PipelineSchemasService {
       .limit(1);
 
     return schema || null;
+  }
+}
+
+/**
+ * `indexed` is for the scalar types an index makes sense for (`INDEXABLE_FIELD_TYPES`);
+ * on a `text` or `json` field it is refused rather than stored and silently ignored, so
+ * a dashboard never shows an index that does not exist.
+ */
+function checkIndexable(
+  fields: readonly { name: string; type: string; indexed?: boolean }[],
+): void {
+  const wrong = fields.filter((f) => f.indexed === true && !isIndexable(f.type));
+  if (wrong.length > 0) {
+    throw new BadRequestException(
+      `indexed is for ${INDEXABLE_FIELD_TYPES.join(', ')} fields; not ${wrong
+        .map((f) => `"${f.name}" (${f.type})`)
+        .join(', ')}`,
+    );
   }
 }

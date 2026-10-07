@@ -909,7 +909,12 @@ export class ProxyRuleSetsService {
       plan: FieldAdoptionPlan;
       resolution: SchemaResolution;
     }[] = [];
-    const pendingIndexAdoptions: { schemaId: string; indexed: string[] }[] = [];
+    const pendingIndexAdoptions: {
+      schemaId: string;
+      indexed: string[];
+      resolution: SchemaResolution;
+      name: string;
+    }[] = [];
     const strictFailures: string[] = [];
     // Loaded at most once per resolve, and only when an unstamped schema is a
     // field-adoption candidate (see fieldAdoptionBlocker).
@@ -977,6 +982,7 @@ export class ProxyRuleSetsService {
         // silently undo one set in the dashboard (the review of bffless/ce#821).
         let indexesAdded: string[] = [];
         let indexesRemoved: string[] = [];
+        let indexAdoption: string[] | undefined;
         const indexPlan = planIndexAdoption(schema.fields, existing.fields);
         if (indexPlan.add.length > 0 || indexPlan.remove.length > 0) {
           const changed = [...indexPlan.add, ...indexPlan.remove];
@@ -1004,7 +1010,7 @@ export class ProxyRuleSetsService {
                 }`,
               );
             }
-            pendingIndexAdoptions.push({ schemaId: existing.id, indexed: indexPlan.indexed });
+            indexAdoption = indexPlan.indexed;
           }
         }
 
@@ -1019,6 +1025,14 @@ export class ProxyRuleSetsService {
           indexesRemoved,
         };
         resolutions.push(resolution);
+        if (indexAdoption) {
+          pendingIndexAdoptions.push({
+            schemaId: existing.id,
+            indexed: indexAdoption,
+            resolution,
+            name: schema.name,
+          });
+        }
         if (adoptionPlan) {
           pendingFieldAdoptions.push({ schema, existing, plan: adoptionPlan, resolution });
         }
@@ -1061,8 +1075,20 @@ export class ProxyRuleSetsService {
       for (const { schemaId, kind } of pendingKindAdoptions) {
         await this.pipelineSchemasService.adoptKind(schemaId, kind);
       }
-      for (const { schemaId, indexed } of pendingIndexAdoptions) {
-        await this.pipelineSchemasService.adoptIndexes(schemaId, indexed);
+      for (const pending of pendingIndexAdoptions) {
+        // A version race (a concurrent edit of the schema) degrades to a warning, as a
+        // field adoption's does: one schema's conflict must not abort a sync whose
+        // earlier adoptions already landed. The indexes stay as they were.
+        try {
+          await this.pipelineSchemasService.adoptIndexes(pending.schemaId, pending.indexed);
+        } catch (error) {
+          if (!(error instanceof ConflictException)) throw error;
+          pending.resolution.indexesAdded = [];
+          pending.resolution.indexesRemoved = [];
+          warnings.push(
+            `Schema "${pending.name}": indexed fields not adopted — the schema changed while the sync ran; push again`,
+          );
+        }
       }
       for (const pending of pendingFieldAdoptions) {
         // `stamp` is always set here: adoption is only planned when
