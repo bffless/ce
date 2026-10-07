@@ -969,12 +969,17 @@ export class ProxyRuleSetsService {
         if (kindAdopted) pendingKindAdoptions.push({ schemaId: existing.id, kind: schema.kind! });
 
         // Index adoption: the app says in its schema which fields it filters on,
-        // and a sync by the set that owns the schema applies that, added or taken
-        // away. Not opt-in like fields (an index changes no row and breaks no
-        // reader) but owned like them: another set's push never re-indexes this one.
-        let indexesAdopted: string[] = [];
+        // and a sync by the set that owns the schema applies that. Not opt-in like
+        // fields (an index changes no row and breaks no reader) but owned like
+        // them: another set's push never re-indexes this one. Adding needs
+        // `indexed: true`; taking away needs an EXPLICIT `indexed: false` and is
+        // warned about, so a YAML that never mentioned a field's index cannot
+        // silently undo one set in the dashboard (the review of bffless/ce#821).
+        let indexesAdded: string[] = [];
+        let indexesRemoved: string[] = [];
         const indexPlan = planIndexAdoption(schema.fields, existing.fields);
-        if (indexPlan.changed.length > 0) {
+        if (indexPlan.add.length > 0 || indexPlan.remove.length > 0) {
+          const changed = [...indexPlan.add, ...indexPlan.remove];
           const blocker = await this.fieldAdoptionBlocker(
             existing,
             schema.id,
@@ -983,12 +988,22 @@ export class ProxyRuleSetsService {
           );
           if (blocker) {
             warnings.push(
-              `Schema "${schema.name}": indexed field(s) ${indexPlan.changed
+              `Schema "${schema.name}": indexed field(s) ${changed
                 .map((f) => `"${f}"`)
                 .join(', ')} not adopted — ${blocker}`,
             );
           } else {
-            indexesAdopted = indexPlan.changed;
+            indexesAdded = indexPlan.add;
+            indexesRemoved = indexPlan.remove;
+            if (indexesRemoved.length > 0) {
+              warnings.push(
+                `Schema "${schema.name}": index removed from field(s) ${indexesRemoved
+                  .map((f) => `"${f}"`)
+                  .join(', ')} — the payload declares indexed: false${
+                  options.dryRun ? ' (dryRun: would be)' : ''
+                }`,
+              );
+            }
             pendingIndexAdoptions.push({ schemaId: existing.id, indexed: indexPlan.indexed });
           }
         }
@@ -1000,7 +1015,8 @@ export class ProxyRuleSetsService {
           fieldMismatch: effectiveMismatches.length > 0,
           kindAdopted,
           fieldsAdopted,
-          indexesAdopted,
+          indexesAdded,
+          indexesRemoved,
         };
         resolutions.push(resolution);
         if (adoptionPlan) {
@@ -1020,7 +1036,8 @@ export class ProxyRuleSetsService {
           // payload field from birth; nothing was adopted onto an existing row.
           kindAdopted: false,
           fieldsAdopted: [],
-          indexesAdopted: [],
+          indexesAdded: [],
+          indexesRemoved: [],
         };
         resolutions.push(resolution);
         pendingCreates.push({ schema, resolution });

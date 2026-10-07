@@ -39,9 +39,21 @@ import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
 export class PipelineDataIndexesService {
   private readonly logger = new Logger(PipelineDataIndexesService.name);
 
-  /** Bring the schema's indexes to match its fields marked `indexed`. */
+  /**
+   * Bring the schema's indexes to match its fields marked `indexed`. Never throws:
+   * the schema row is already written when this runs, and a failure to read or
+   * write an index must not turn that success into an error for the caller.
+   */
   async reconcile(schemaId: string, fields: readonly SchemaField[]): Promise<IndexPlan> {
-    const existing = await this.existingIndexNames(schemaId);
+    let existing: string[];
+    try {
+      existing = await this.existingIndexNames(schemaId);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the indexes of schema ${schemaId}: ${(error as Error).message}`,
+      );
+      return { create: [], drop: [], wanted: [] };
+    }
     const plan = planIndexes(schemaId, fields, existing);
     for (const { name, statement } of plan.create) {
       try {

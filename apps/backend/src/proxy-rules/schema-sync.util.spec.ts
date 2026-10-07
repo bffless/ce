@@ -111,26 +111,37 @@ describe('schema-sync.util', () => {
       { name: 'id', type: 'string' as const, required: true },
       { name: 'status', type: 'string' as const, required: false, indexed: true },
     ];
-    it('names the fields whose indexed flag differs, and the set that would then be indexed', () => {
+    it('adds on indexed: true, removes on an explicit indexed: false, and says what is indexed after', () => {
       const plan = planIndexAdoption(
         [
           { name: 'id', type: 'string', required: true, indexed: true },
-          { name: 'status', type: 'string', required: false },
+          { name: 'status', type: 'string', required: false, indexed: false },
         ],
         live,
       );
-      expect(plan).toEqual({ changed: ['id', 'status'], indexed: ['id'] });
+      expect(plan).toEqual({ add: ['id'], remove: ['status'], indexed: ['id'] });
     });
-    it('agrees when the flags match, absent reading as false', () => {
+    it('a payload field with no indexed key has no opinion: the live flag stands', () => {
       expect(
         planIndexAdoption(
           [
             { name: 'id', type: 'string' },
+            { name: 'status', type: 'string' },
+          ],
+          live,
+        ),
+      ).toEqual({ add: [], remove: [], indexed: ['status'] });
+    });
+    it('agrees when the flags match', () => {
+      expect(
+        planIndexAdoption(
+          [
+            { name: 'id', type: 'string', indexed: false },
             { name: 'status', type: 'string', indexed: true },
           ],
           live,
         ),
-      ).toEqual({ changed: [], indexed: ['status'] });
+      ).toEqual({ add: [], remove: [], indexed: ['status'] });
     });
     it("ignores a payload-only field (field adoption's business) and keeps a live-only field as it is", () => {
       const plan = planIndexAdoption(
@@ -140,7 +151,7 @@ describe('schema-sync.util', () => {
         ],
         live,
       );
-      expect(plan).toEqual({ changed: ['id'], indexed: ['id', 'status'] });
+      expect(plan).toEqual({ add: ['id'], remove: [], indexed: ['id', 'status'] });
     });
   });
 

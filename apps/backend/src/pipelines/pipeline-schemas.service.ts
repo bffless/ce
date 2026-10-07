@@ -209,23 +209,29 @@ export class PipelineSchemasService {
    * `indexed` flag of each is written. Returns the names now indexed.
    */
   async adoptIndexes(id: string, indexed: readonly string[]): Promise<string[]> {
-    const existing = await this.getById(id);
-    if (!existing) throw new NotFoundException(`Schema ${id} not found`);
-    const wanted = new Set(indexed);
-    const fields = existing.fields.map((f) => {
-      const { indexed: _was, ...rest } = f;
-      return wanted.has(f.name) ? { ...rest, indexed: true } : rest;
-    });
-    const [updated] = await db
-      .update(pipelineSchemas)
-      .set({ fields, updatedAt: new Date() })
-      .where(eq(pipelineSchemas.id, id))
-      .returning();
-    this.logger.log(
-      `Indexed fields of schema ${id}: ${indexedFieldNames(fields).join(', ') || 'none'}`,
-    );
-    await this.indexes.reconcile(id, updated.fields);
-    return indexedFieldNames(updated.fields);
+    // Optimistic, like adoptFields: the write is conditioned on the version it
+    // read, so a concurrent field change is not clobbered; once more if it moved.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const existing = await this.getById(id);
+      if (!existing) throw new NotFoundException(`Schema ${id} not found`);
+      const wanted = new Set(indexed);
+      const fields = existing.fields.map((f) => {
+        const { indexed: _was, ...rest } = f;
+        return wanted.has(f.name) ? { ...rest, indexed: true } : rest;
+      });
+      const [updated] = await db
+        .update(pipelineSchemas)
+        .set({ fields, updatedAt: new Date() })
+        .where(and(eq(pipelineSchemas.id, id), eq(pipelineSchemas.version, existing.version)))
+        .returning();
+      if (!updated) continue;
+      this.logger.log(
+        `Indexed fields of schema ${id}: ${indexedFieldNames(fields).join(', ') || 'none'}`,
+      );
+      await this.indexes.reconcile(id, updated.fields);
+      return indexedFieldNames(updated.fields);
+    }
+    throw new ConflictException(`Schema ${id} changed while its indexes were being set; try again`);
   }
 
   /**

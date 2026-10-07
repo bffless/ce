@@ -46,40 +46,50 @@ export interface SchemaResolution {
    */
   fieldsAdopted: string[];
   /**
-   * Names of the fields whose `indexed` flag the sync set to match the payload,
-   * on a schema this rule set owns (planned only, under dryRun). An index is
-   * the app's declaration of what it filters on (`PipelineDataIndexesService`);
-   * like `kind` it changes nothing about the rows, so it is adopted without a
-   * version bump, and unlike fields it may be taken away as well as added.
-   * Empty when the payload and the live schema already agree.
+   * Names of the live schema's fields the sync marked `indexed` because the
+   * payload declares `indexed: true` and the live schema did not, on a schema
+   * this rule set owns (planned only, under dryRun). An index is the app's
+   * declaration of what it filters on (`PipelineDataIndexesService`); like
+   * `kind` it changes nothing about the rows, so it is adopted without a
+   * version bump. Empty when the payload and the live schema already agree.
    */
-  indexesAdopted: string[];
+  indexesAdded: string[];
+  /**
+   * Names of the live schema's fields the sync un-marked because the payload
+   * declares `indexed: false` EXPLICITLY. A payload that says nothing about a
+   * field's index leaves it as it is: an index set in the dashboard or by the
+   * API is not taken away by a push whose YAML never mentioned it. A removal
+   * is also warned about, so it is never silent.
+   */
+  indexesRemoved: string[];
 }
 
 /**
- * The fields whose `indexed` flag differs between the payload and the live
- * schema, by name: what index adoption would change. Only fields present on
- * both sides count (a payload-only field is field adoption's business). Pure.
+ * What index adoption would change, by field name: the live fields the payload
+ * declares `indexed: true` that are not indexed (`add`), and the ones it
+ * declares `indexed: false` that are (`remove`). A payload field with no
+ * `indexed` key has NO OPINION and changes nothing: the flag is tri-state on
+ * the way in (true, false, absent), two-state at rest. Only fields present on
+ * both sides count (a payload-only field is field adoption's business).
+ * `indexed` is the resulting set of indexed field names. Pure.
  */
 export function planIndexAdoption(
   incoming: ComparableSchemaField[],
   existing: ComparableSchemaField[],
-): { changed: string[]; indexed: string[] } {
+): { add: string[]; remove: string[]; indexed: string[] } {
   const incomingByName = new Map(incoming.map((f) => [f.name, f]));
-  const changed: string[] = [];
+  const add: string[] = [];
+  const remove: string[] = [];
+  const indexed: string[] = [];
   for (const live of existing) {
     const payload = incomingByName.get(live.name);
-    if (!payload) continue;
-    if ((payload.indexed ?? false) !== (live.indexed ?? false)) changed.push(live.name);
+    const was = live.indexed === true;
+    const wants = payload && payload.indexed !== undefined ? payload.indexed === true : was;
+    if (wants && !was) add.push(live.name);
+    if (!wants && was) remove.push(live.name);
+    if (wants) indexed.push(live.name);
   }
-  // The payload's say for a field it has (absent reads as false), the live flag for one it lacks.
-  const indexed = existing
-    .filter((live) => {
-      const payload = incomingByName.get(live.name);
-      return (payload ? (payload.indexed ?? false) : (live.indexed ?? false)) === true;
-    })
-    .map((f) => f.name);
-  return { changed, indexed };
+  return { add, remove, indexed };
 }
 
 /**

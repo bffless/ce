@@ -1,3 +1,4 @@
+import { PipelineDataIndexesService } from './pipeline-data-indexes.service';
 import {
   createIndexSql,
   dropIndexSql,
@@ -7,6 +8,11 @@ import {
   planIndexes,
 } from './pipeline-data-indexes.service';
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
+
+const mockExecute = jest.fn();
+jest.mock('../db/client', () => ({
+  db: { execute: (...args: unknown[]) => mockExecute(...args) },
+}));
 
 /**
  * The per-schema field indexes on pipeline_data: an app marks the fields its
@@ -75,5 +81,43 @@ describe('pipeline_data field indexes', () => {
     );
     expect(plan.create).toEqual([]);
     expect(plan.drop).toEqual([indexName(schemaId, 'runId')]);
+  });
+
+  describe('reconcile', () => {
+    beforeEach(() => mockExecute.mockReset());
+    const service = new PipelineDataIndexesService();
+    const indexedField: SchemaField = {
+      name: 'runId',
+      type: 'string',
+      required: true,
+      indexed: true,
+    };
+
+    it('creates the missing index and reports the plan', async () => {
+      mockExecute.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      const plan = await service.reconcile(schemaId, [indexedField]);
+      expect(plan.create.map((c) => c.field)).toEqual(['runId']);
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+
+    it('never throws: a failed read of the existing indexes leaves the schema write alone', async () => {
+      mockExecute.mockRejectedValueOnce(new Error('pg_indexes: permission denied'));
+      await expect(service.reconcile(schemaId, [indexedField])).resolves.toEqual({
+        create: [],
+        drop: [],
+        wanted: [],
+      });
+    });
+
+    it('never throws: a failed CREATE is logged and the rest of the plan goes on', async () => {
+      mockExecute
+        .mockResolvedValueOnce([{ indexname: indexName(schemaId, 'stale') }])
+        .mockRejectedValueOnce(new Error('lock timeout'))
+        .mockResolvedValueOnce([]);
+      const plan = await service.reconcile(schemaId, [indexedField]);
+      expect(plan.create.map((c) => c.field)).toEqual(['runId']);
+      expect(plan.drop).toEqual([indexName(schemaId, 'stale')]);
+      expect(mockExecute).toHaveBeenCalledTimes(3);
+    });
   });
 });
