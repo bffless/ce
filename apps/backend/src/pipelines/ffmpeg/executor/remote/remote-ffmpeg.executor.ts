@@ -43,6 +43,27 @@ function isLocalPresignUrl(probe: string): boolean {
 
 /** How long a readiness answer (storage probe + healthz) is reused. */
 const READINESS_CACHE_MS = 60_000;
+/**
+ * How long `ready()` waits for a Worker that is not answering before calling it
+ * unreachable, and how often it asks again. A scale-to-zero Worker (Cloud Run)
+ * takes about 30 s to start, and its front door answers the requests that arrive
+ * meanwhile with a 500 "no available instance" — not a 503 the transport would
+ * retry. Seen 2026-10-13: the first piece of a drive woke the worker, and every
+ * piece that followed within the minute failed on the cached "unreachable".
+ */
+const WAKE_WAIT_MS = 45_000;
+const WAKE_POLL_MS = 5_000;
+
+/**
+ * A health failure that may just be a Worker still waking: no answer at all
+ * (refused, reset, timed out), a 5xx from a front door with no instance behind
+ * it, or a 429. A 4xx below that is the Worker (or its auth) saying no, and
+ * waiting will not change it.
+ */
+function mayBeWaking(error: unknown): boolean {
+  if (!(error instanceof WorkerTransportError)) return false;
+  return error.status === undefined || error.status === 429 || error.status >= 500;
+}
 /** Key the storage probe writes nothing to — it only signs a URL, it never uploads. */
 const PROBE_KEY = '__ffmpeg_remote_probe__';
 const PROBE_TTL_SECONDS = 60;
@@ -85,6 +106,8 @@ interface Deps {
   env?: () => FfmpegEnvConfig;
   clientFactory?: (env: FfmpegEnvConfig) => WorkerClient;
   now?: () => number;
+  /** The pause between health polls while a Worker wakes (a test seam). */
+  sleep?: (ms: number) => Promise<void>;
   /** The shared per-connection in-flight counter; a private one when nothing supplies it. */
   fuse?: InflightFuse;
 }
@@ -114,6 +137,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
   private readonly env: () => FfmpegEnvConfig;
   private readonly clientFactory: (env: FfmpegEnvConfig) => WorkerClient;
   private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   /**
    * Jobs in flight against the CONNECTION, not against this object: the same
@@ -134,6 +158,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     this.env = deps.env ?? (() => readFfmpegEnv());
     this.clientFactory = deps.clientFactory ?? buildWorkerClient;
     this.now = deps.now ?? (() => Date.now());
+    this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     // Read per job, never here: FFMPEG_REMOTE_DEPS exposes the shared fuse
     // through a lazy getter, and resolving it in this constructor would race
     // Nest's provider instantiation order — silently falling back to a private
@@ -183,9 +208,17 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       }
     }
 
-    entry.health ??= await this.probeHealth(env, { throwaway: Boolean(opts.fresh || opts.env) });
-    if (!entry.health.ok) return { ok: false, reason: entry.health.reason };
-    const health = entry.health.health;
+    // A failed probe is never cached: the next job asks again rather than
+    // inheriting a minute of "unreachable" from a Worker that was only waking.
+    const probed =
+      entry.health ??
+      (await this.probeHealth(env, {
+        throwaway: Boolean(opts.fresh || opts.env),
+        wait: !(opts.fresh || opts.env),
+      }));
+    if (!probed.ok) return { ok: false, reason: probed.reason };
+    entry.health = probed;
+    const health = probed.health;
     if (!health.ok) return { ok: false, reason: 'worker reports not ok' };
     if (env.workerMinVersion && semverLt(health.version, env.workerMinVersion)) {
       return {
@@ -400,18 +433,40 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
   /**
    * `throwaway` = a Test-connection / candidate check: build a one-off client so a
    * draft config cannot evict the live memoised WorkerClient (and the ID token it
-   * has already minted) out from under running jobs.
+   * has already minted) out from under running jobs. `wait` = keep asking for up
+   * to WAKE_WAIT_MS while the answer looks like a Worker still starting; off for
+   * the settings button, which wants the answer now.
    */
   private async probeHealth(
     env: FfmpegEnvConfig,
-    opts: { throwaway?: boolean } = {},
+    opts: { throwaway?: boolean; wait?: boolean } = {},
   ): Promise<NonNullable<CacheEntry['health']>> {
-    try {
-      const client = opts.throwaway ? this.clientFactory(env) : this.clientFor(env);
-      return { ok: true, health: await client.health() };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, reason: `worker unreachable: ${message}` };
+    const client = opts.throwaway ? this.clientFactory(env) : this.clientFor(env);
+    const started = this.now();
+    let waited = false;
+    for (;;) {
+      try {
+        return { ok: true, health: await client.health() };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const elapsed = this.now() - started;
+        if (opts.wait && mayBeWaking(error) && elapsed + WAKE_POLL_MS <= WAKE_WAIT_MS) {
+          if (!waited) {
+            waited = true;
+            this.logger.warn(
+              `ffmpeg worker not answering (${message}); waiting up to ${WAKE_WAIT_MS / 1000} s for it to wake`,
+            );
+          }
+          await this.sleep(WAKE_POLL_MS);
+          continue;
+        }
+        return {
+          ok: false,
+          reason: waited
+            ? `worker unreachable after waiting ${Math.round(elapsed / 1000)} s for it to wake: ${message}`
+            : `worker unreachable: ${message}`,
+        };
+      }
     }
   }
 

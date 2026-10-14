@@ -76,6 +76,10 @@ function make(
       return client as never;
     },
     now: () => now,
+    // The wake wait sleeps through the clock seam, so a test sees the polls at once.
+    sleep: async (ms: number) => {
+      now += ms;
+    },
     ...(fuse ? { fuse } : {}),
   });
   return {
@@ -203,6 +207,49 @@ describe('ready()', () => {
     const before = seenEnvs.length;
     await executor.ready();
     expect(seenEnvs).toHaveLength(before);
+  });
+  it('waits for a worker that answers 500 with no instance up (Cloud Run waking), then caches the first good answer', async () => {
+    const { executor, client } = make();
+    client.health
+      .mockRejectedValueOnce(
+        new WorkerTransportError('worker health responded 500: no instance', 500),
+      )
+      .mockRejectedValueOnce(
+        new WorkerTransportError('worker health responded 500: no instance', 500),
+      )
+      .mockResolvedValue(health);
+    expect(await executor.ready()).toEqual({ ok: true, version: '0.4.31' });
+    expect(client.health).toHaveBeenCalledTimes(3);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain('waiting up to 45 s');
+    await executor.ready();
+    expect(client.health).toHaveBeenCalledTimes(3); // the good answer is cached, the bad ones never were
+  });
+  it('gives up after the wake budget, says how long it waited, and does not cache the failure', async () => {
+    const { executor, client } = make();
+    client.health.mockRejectedValue(new WorkerTransportError('ECONNREFUSED'));
+    expect(await executor.ready()).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/after waiting 4\d s .*ECONNREFUSED/),
+    });
+    const polls = client.health.mock.calls.length;
+    expect(polls).toBeGreaterThanOrEqual(9);
+    client.health.mockResolvedValue(health);
+    expect(await executor.ready()).toEqual({ ok: true, version: '0.4.31' });
+    expect(client.health).toHaveBeenCalledTimes(polls + 1);
+  });
+  it('does not wait on a 4xx (auth or route), nor for a Test-connection / candidate check', async () => {
+    const a = make();
+    a.client.health.mockRejectedValue(new WorkerTransportError('worker health responded 403', 403));
+    expect(await a.executor.ready()).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/^worker unreachable: /),
+    });
+    expect(a.client.health).toHaveBeenCalledTimes(1);
+    const b = make();
+    b.client.health.mockRejectedValue(new WorkerTransportError('ECONNREFUSED'));
+    expect(await b.executor.ready({ fresh: true })).toMatchObject({ ok: false });
+    expect(b.client.health).toHaveBeenCalledTimes(1);
   });
   it('unreachable worker and too-old worker are not ready', async () => {
     const a = make();
