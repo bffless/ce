@@ -396,6 +396,24 @@ with the client told "try refresh token" by the very response that refused the r
 **Learned from:** #811, 2026-09-25 — `isAuthProxyRule` was added to the gate (#760-era) and was
 correct, but unreachable for an expired cookie on the rewritten path.
 
+### A "wait for the worker to wake" loop needs a failure cache, a shared in-flight probe, and a check of every caller outside the step deadline
+**Surface:** `apps/backend/src/pipelines/ffmpeg/executor/remote/remote-ffmpeg.executor.ts`
+(`probeHealth`'s wake wait, `cachedHealth`), `apps/backend/src/pipelines/handlers/ffmpeg.handler.ts`
+(the `operation: 'probe', !input` capability self-test, which runs *before* `withDeadline(op(),
+jobMaxSeconds)` and so is bounded by nothing but the probe itself).
+**Check:** When readiness or health probing grows a retry-while-waking loop, does the PR trace every
+caller of `ready()` for one outside the handler's per-step deadline? Is a failed probe kept for
+*some* window (today `HEALTH_FAILURE_CACHE_MS`, 20 s) so a sustained outage fails fast after one
+wait, rather than never cached (every call repays the full wait) or cached for the whole readiness
+minute (the cold-start bug)? Do concurrent callers share one in-flight probe, or does each poll the
+Worker while it starts?
+**Why:** A Worker that is genuinely down (bad URL, decommissioned, firewalled) fails in the same
+shape as one still waking (no status, or a 5xx from a front door with no instance), so the loop
+cannot tell them apart: the fix for one is a 45 s hang per call for the other unless the failure
+is remembered briefly — and the capability self-test is reachable from public pipeline rules.
+**Learned from:** #823, 2026-10-15 — the first revision never cached a failed probe and every
+caller ran its own poll loop; the automated review caught both.
+
 ---
 
 ## Entry template
