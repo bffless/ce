@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.65](https://github.com/bffless/ce/compare/v0.4.64...v0.4.65) (2026-10-15)
+
+
+### Fixed
+
+* **ffmpeg:** wait for a remote worker that is waking, never cache a failed health probe ([#823](https://github.com/bffless/ce/issues/823)) ([b2cf52f](https://github.com/bffless/ce/commit/b2cf52fc4ffdd1fad3e45092d914c46e296bb479))
+
 ## [0.4.64](https://github.com/bffless/ce/compare/v0.4.63...v0.4.64) (2026-10-07)
 
 ### Added
