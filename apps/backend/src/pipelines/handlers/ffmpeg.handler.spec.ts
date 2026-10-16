@@ -578,6 +578,71 @@ describe('slice with audio and draw, and card (feedback-video)', () => {
     expect(retryArgs[retryArgs.indexOf('-filter_complex') + 1]).not.toContain('drawtext');
   });
 
+  it('a source with no audio stream costs the cut one retry with a silent bed, not the step', async () => {
+    const { handler, runner } = narratedSetup(6);
+    const base = runner.run.getMockImplementation()!;
+    runner.run.mockImplementation(async (job: { args: string[]; cwd: string }) => {
+      if (job.args.includes('-filter_complex') && !job.args.includes('lavfi')) {
+        throw Object.assign(new Error('boom'), {
+          code: 'FFMPEG_FAILED',
+          stderrTail:
+            "Stream specifier ':a' in filtergraph description [0:v]trim=end=10,split[vh0][vb0];[0:a]atrim=0:10,asetpts=PTS-0/TB[a0] matches no streams.",
+        });
+      }
+      return base(job);
+    });
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'a.mp4',
+        spans: [{ start: 0, end: 10 }],
+        output: 'b.mp4',
+        audio: 'v.wav',
+        draw: { text: 'hi' },
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({ drawn: true, narrated: true, duration: 10 });
+    expect(runner.run).toHaveBeenCalledTimes(3);
+    const retryArgs = runner.run.mock.calls[2][0].args as string[];
+    expect(retryArgs).toEqual(
+      expect.arrayContaining(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']),
+    );
+    const graph = retryArgs[retryArgs.indexOf('-filter_complex') + 1];
+    expect(graph).toContain('[2:a]atrim=0:10');
+    expect(graph).toContain('drawtext');
+  });
+
+  it('any other ffmpeg failure on a cut still fails the step once', async () => {
+    const { handler, runner } = narratedSetup(6);
+    runner.run.mockImplementation(async (job: { args: string[] }) => {
+      if (job.args.includes('-filter_complex')) {
+        throw Object.assign(new Error('boom'), {
+          code: 'FFMPEG_FAILED',
+          stderrTail: 'Conversion failed!',
+        });
+      }
+      return {
+        stdout: JSON.stringify({ format: { duration: '6' } }),
+        stderr: '',
+        exitCode: 0,
+      } as never;
+    });
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'a.mp4',
+        spans: [{ start: 0, end: 10 }],
+        output: 'b.mp4',
+        audio: 'v.wav',
+      }),
+    );
+    expect(result.success).toBe(false);
+    expect(runner.run).toHaveBeenCalledTimes(2);
+  });
+
   it('a plain cut reports narrated:false and drawn:false and probes nothing', async () => {
     const { handler, runner } = narratedSetup();
     const result = await handler.execute(

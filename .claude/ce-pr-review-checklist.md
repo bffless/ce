@@ -416,6 +416,21 @@ caller ran its own poll loop; the automated review caught both.
 
 ---
 
+### An ffmpeg filter graph that names `[0:a]` must survive a source with no audio stream
+**Surface:** `apps/backend/src/pipelines/ffmpeg/ffmpeg-args.ts` (`spanFilterGraph`, `buildSliceArgs`), `apps/backend/src/pipelines/handlers/ffmpeg.handler.ts` (the slice fences)
+**Check:** Does a graph label a source audio stream (`[0:a]`, `[N:a]`) without a path for a
+source that has none? ffmpeg refuses the whole graph before decoding ("Stream specifier ':a'
+... matches no streams"), so a video-only input fails the step outright. Is the fallback a
+generated silent bed (`anullsrc` in the shared 48 kHz stereo layout) keyed on ffmpeg's own
+stderr, as the drawtext degrade is (R77), and not on `error.message`? Does the fence fire at
+most once, and only for that wording?
+**Why:** A recording made with the microphone off (a dashcam, a phone with audio off) is an
+ordinary input, and every downstream step that stitches cuts expects the one audio layout
+(#818). Probing every source for the rare case costs a job per cut; a cheap failed attempt
+costs nothing in the common case.
+**Learned from:** #825, 2026-10-16 — driving-teacher's first audio-off drive had every lesson
+published without its cut.
+
 ## Entry template
 
 ```

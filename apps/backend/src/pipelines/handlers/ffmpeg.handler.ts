@@ -130,6 +130,19 @@ function isDrawtextFailure(error: unknown): boolean {
 }
 
 /**
+ * A slice whose source has no audio stream: ffmpeg refuses the graph at its `[0:a]` label
+ * before decoding a frame ("Stream specifier ':a' in filtergraph description ... matches no
+ * streams"). The same fence as `isDrawtextFailure`: ffmpeg's own stderr only, and only
+ * the one wording a silent bed can answer. A drive recorded with the microphone off
+ * (driving-teacher mobile-recording 5.2) is the case.
+ */
+function isNoAudioStreamFailure(error: unknown): boolean {
+  const e = error as { code?: string; stderrTail?: string };
+  if (e?.code !== 'FFMPEG_FAILED') return false;
+  return /stream specifier[^\n]*:a[^\n]*matches no streams/i.test(e.stderrTail ?? '');
+}
+
+/**
  * ffmpeg_handler — see the FfmpegHandlerConfig TSDoc in step-handler.interface.ts
  * for the authoritative operation reference.
  *
@@ -1166,7 +1179,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       { name: inName, key: inputKey, stream: true as const },
       ...(voiceKey && voiceName ? [{ name: voiceName, key: voiceKey }] : []),
     ];
-    const job = (withDraw: boolean): FfmpegJob => {
+    const job = (withDraw: boolean, silentSource: boolean): FfmpegJob => {
       const commands: FfmpegJobCommand[] = [
         {
           id: 'slice',
@@ -1179,6 +1192,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
             audioFades: config.audioFades === true,
             narration,
             overlay: overlayFor(withDraw),
+            silentSource,
           }),
         },
       ];
@@ -1205,15 +1219,28 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     // front; any other ffmpeg that turns out to lack it costs one undrawn retry, not the step.
     const localLacksDrawtext =
       executor.name === 'local' && this.capability.hasFilter?.('drawtext') === false;
+    // A source with no audio stream costs one retry with a silent bed in its place, not
+    // the step: the common case (a track to cut) pays no probe for it. ffmpeg refuses
+    // such a graph before decoding, so the failed attempt is cheap. Each fence fires at
+    // most once, in either order.
     let drawn = texts !== undefined && !localLacksDrawtext;
+    let silent = false;
     let res: FfmpegJobResult;
-    try {
-      res = await this.runJob(executor, job(drawn), signal);
-    } catch (error) {
-      if (!drawn || !isDrawtextFailure(error)) throw error;
-      this.logger.warn({ event: 'ffmpeg_slice_drawtext_missing', step: stepName });
-      drawn = false;
-      res = await this.runJob(executor, job(false), signal);
+    for (;;) {
+      try {
+        res = await this.runJob(executor, job(drawn, silent), signal);
+        break;
+      } catch (error) {
+        if (drawn && isDrawtextFailure(error)) {
+          this.logger.warn({ event: 'ffmpeg_slice_drawtext_missing', step: stepName });
+          drawn = false;
+        } else if (!silent && isNoAudioStreamFailure(error)) {
+          this.logger.warn({ event: 'ffmpeg_slice_source_silent', step: stepName });
+          silent = true;
+        } else {
+          throw error;
+        }
+      }
     }
     const spanSeconds = spans.reduce((n, s) => n + (s.end - s.start), 0);
     const duration = narration

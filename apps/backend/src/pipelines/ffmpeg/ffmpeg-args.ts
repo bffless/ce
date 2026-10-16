@@ -69,7 +69,7 @@ export function buildExtractAudioArgs(input: string, output: string): string[] {
   return ['-i', input, '-vn', '-ac', '1', '-ar', '16000', '-f', 'wav', output];
 }
 
-function spanFilterGraph(spans: Span[], audioFades: boolean): string {
+function spanFilterGraph(spans: Span[], audioFades: boolean, audioSource: string): string {
   const parts: string[] = [];
   spans.forEach((v, i) => {
     const s = secs(v.start);
@@ -87,7 +87,7 @@ function spanFilterGraph(spans: Span[], audioFades: boolean): string {
     const fade = audioFades
       ? `,afade=t=in:st=0:d=${secs(FADE)},afade=t=out:st=${secs(Math.max(0, len - FADE))}:d=${secs(FADE)}`
       : '';
-    parts.push(`[0:a]atrim=${s}:${e},asetpts=${origin}${fade}[a${i}]`);
+    parts.push(`[${audioSource}]atrim=${s}:${e},asetpts=${origin}${fade}[a${i}]`);
   });
   const labels = spans.map((_, i) => `[v${i}][a${i}]`).join('');
   parts.push(`${labels}concat=n=${spans.length}:v=1:a=1[vout][aout]`);
@@ -110,6 +110,13 @@ export function buildSliceArgs(opts: {
   narration?: SliceNarration;
   /** One line drawn on the whole cut, the same fence as a still's overlay. */
   overlay?: FrameOverlay;
+  /**
+   * The source has no audio stream (a drive recorded with the microphone off): the cut's
+   * own audio is a silent stereo bed generated in its place, so the graph, the narration
+   * mix and the shared layout all stand as they are. The handler sets it on the retry
+   * after ffmpeg reported that `0:a` matches no stream.
+   */
+  silentSource?: boolean;
 }): string[] {
   const spans = opts.spans.map((v) => {
     const start = Math.max(0, v.start);
@@ -119,7 +126,15 @@ export function buildSliceArgs(opts: {
   if (narration !== undefined && spans.length !== 1) {
     throw new Error(`a narrated slice takes exactly one span, got ${spans.length}`);
   }
-  let graph = spanFilterGraph(spans, opts.audioFades === true);
+  // Inputs: the source, then the voice when there is one, then the silent bed when the
+  // source has no audio. The bed is `atrim`med in source seconds like a real track; a
+  // lavfi source generates them for nothing.
+  const silenceIndex = opts.silentSource === true ? (narration === undefined ? 1 : 2) : null;
+  let graph = spanFilterGraph(
+    spans,
+    opts.audioFades === true,
+    silenceIndex === null ? '0:a' : `${silenceIndex}:a`,
+  );
   let video = '[vout]';
   let audio = '[aout]';
   const extraInputs: string[] = [];
@@ -146,6 +161,9 @@ export function buildSliceArgs(opts: {
     audio = '[amix]';
     extraInputs.push('-i', narration.input);
     outputLength = ['-t', secs(total)];
+  }
+  if (silenceIndex !== null) {
+    extraInputs.push('-f', 'lavfi', '-i', `anullsrc=r=${NARRATION_SAMPLE_RATE}:cl=stereo`);
   }
   if (opts.overlay !== undefined) {
     graph += `;${video}${drawtextFilter(opts.overlay)}[vdraw]`;
