@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.66](https://github.com/bffless/ce/compare/v0.4.65...v0.4.66) (2026-10-16)
+
+
+### Fixed
+
+* **ffmpeg:** cut a source that has no audio stream with a silent bed in its place ([#825](https://github.com/bffless/ce/issues/825)) ([b082169](https://github.com/bffless/ce/commit/b08216967d311f597d080e18164ea05aea7f48f1))
+
 ## [0.4.65](https://github.com/bffless/ce/compare/v0.4.64...v0.4.65) (2026-10-15)
 
 ### Fixed
