@@ -734,7 +734,9 @@ export interface FfmpegTileConfig {
  * - `slice` — cut the kept `spans` out of `input`, concat into one clip
  *   (libx264 ultrafast/yuv420p/aac/+faststart, A/V-sync-safe trim graph).
  *   Optional `audioOutput` also emits the clip's 16 kHz WAV; `audioFades`
- *   adds ~10 ms edge fades (use for scene assembly).
+ *   adds ~10 ms edge fades (use for scene assembly). A source with no audio
+ *   stream is cut with a silent stereo bed in its place (one retry, same
+ *   output layout), so a muted recording still gets its cut.
  * - `concat` — stitch `inputs` (uniformly-encoded clips) into `output`;
  *   stream-copy first, automatic re-encode fallback on stream mismatch.
  * - `frames` — one still per entry in `times`, with two optional modifiers:

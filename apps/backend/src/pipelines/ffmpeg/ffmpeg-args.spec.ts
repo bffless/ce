@@ -844,6 +844,75 @@ describe('buildSliceArgs — narration and overlay (feedback-video)', () => {
     expect(argAfter(plain, '-to')).toBe('2');
   });
 
+  /**
+   * A source with no audio stream (a drive recorded with the microphone off): the
+   * handler retries with `silentSource`, and the cut's own audio is a generated silent
+   * bed trimmed in source seconds, so the rest of the graph stands as it is.
+   */
+  it('a silent source takes a lavfi silence as the cut audio, after the voice when there is one', () => {
+    const args = buildSliceArgs({
+      input: 'src.mp4',
+      output: 'clip.mp4',
+      spans: [{ start: 77, end: 88.2 }],
+      threads: 2,
+      narration: { input: 'voice.wav', seconds: 18.325, original: 0.25 },
+      silentSource: true,
+    });
+    expect(args.slice(0, 11)).toEqual([
+      '-ss',
+      '77',
+      '-copyts',
+      '-i',
+      'src.mp4',
+      '-i',
+      'voice.wav',
+      '-f',
+      'lavfi',
+      '-i',
+      'anullsrc=r=48000:cl=stereo',
+    ]);
+    const graph = argAfter(args, '-filter_complex');
+    expect(graph).toContain('[2:a]atrim=77:88.2,asetpts=PTS-77/TB[a0]');
+    expect(graph).not.toContain('[0:a]');
+    expect(graph).toContain('[1:a]aresample=48000');
+    expect(graph).toContain('[abed][avoice]amix=inputs=2:duration=first:normalize=0[amix]');
+  });
+
+  it('a silent source without a voice takes the silence as input 1 and keeps -to', () => {
+    const args = buildSliceArgs({
+      input: 'src.mp4',
+      output: 'clip.mp4',
+      spans: [{ start: 1, end: 2 }],
+      threads: 2,
+      silentSource: true,
+    });
+    expect(args.slice(0, 9)).toEqual([
+      '-ss',
+      '1',
+      '-copyts',
+      '-i',
+      'src.mp4',
+      '-f',
+      'lavfi',
+      '-i',
+      'anullsrc=r=48000:cl=stereo',
+    ]);
+    expect(argAfter(args, '-filter_complex')).toContain('[1:a]atrim=1:2');
+    expect(argAfter(args, '-to')).toBe('2');
+    expect(args[args.lastIndexOf('-map') + 1]).toBe('[aout]');
+  });
+
+  it('a source with audio keeps [0:a] and no lavfi input', () => {
+    const args = buildSliceArgs({
+      input: 'src.mp4',
+      output: 'clip.mp4',
+      spans: [{ start: 1, end: 2 }],
+      threads: 2,
+    });
+    expect(args).not.toContain('lavfi');
+    expect(argAfter(args, '-filter_complex')).toContain('[0:a]atrim=1:2');
+  });
+
   it('writes the same 48 kHz stereo layout for an un-narrated multi-span cut', () => {
     const plain = buildSliceArgs({
       input: 'src.mp4',
