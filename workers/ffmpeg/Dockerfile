@@ -1,3 +1,6 @@
+# Node 22.23.4 or newer is required: earlier releases carry CVE-2026-111497 (Node2Shell),
+# an out-of-bounds write in the bundled Brotli decoder. The floating 22-alpine tag resolves to
+# the current 22.x patch release, so a rebuild always picks up the fix.
 FROM node:22-alpine
 # Same ffmpeg package line as docker/backend.Dockerfile so flags/versions match the local executor.
 # font-noto is NOT optional: ffmpeg's `drawtext` (the frames op's `draw` block) takes no explicit

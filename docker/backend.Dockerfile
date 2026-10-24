@@ -1,4 +1,7 @@
 # Build stage
+# Node 22.23.4 or newer is required: earlier releases carry CVE-2026-111497 (Node2Shell),
+# an out-of-bounds write in the bundled Brotli decoder. The floating 22-alpine tag resolves to
+# the current 22.x patch release, so a rebuild always picks up the fix.
 FROM node:22-alpine AS builder
 
 # Install pnpm
