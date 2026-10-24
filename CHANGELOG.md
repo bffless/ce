@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.67](https://github.com/bffless/ce/compare/v0.4.66...v0.4.67) (2026-10-24)
+
+
+### Fixed
+
+* **docker:** rebuild images on Node 22.23.4 for CVE-2026-111497 (Node2Shell) ([#827](https://github.com/bffless/ce/issues/827)) ([3734ae1](https://github.com/bffless/ce/commit/3734ae188c61def72611ef345f474d271bdcfde1))
+
 ## [0.4.66](https://github.com/bffless/ce/compare/v0.4.65...v0.4.66) (2026-10-16)
 
 ### Fixed
