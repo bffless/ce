@@ -1,7 +1,7 @@
 import { AIHandler } from './ai.handler';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { AIHandlerConfig } from '../execution/step-handler.interface';
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import { PipelineContext } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
 
@@ -314,5 +314,63 @@ describe('AIHandler.execute — step-scoped skills source', () => {
       'sha-from-alias',
       'skills',
     );
+  });
+});
+
+describe('AIHandler.execute — temperature', () => {
+  const run = (config: Record<string, unknown> = {}) =>
+    createHandler().handler.execute(
+      createContext({ prep: { prompt: 'hi' } }),
+      completionStep({ messageField: 'steps.prep.prompt', ...config }),
+    );
+
+  beforeEach(() => {
+    (generateText as jest.Mock).mockReset().mockResolvedValue({
+      text: 'ok',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      finishReason: 'stop',
+      steps: [],
+    });
+  });
+
+  it('omits temperature from generateText when the step does not set one', async () => {
+    const result = await run();
+    expect(result.success).toBe(true);
+    expect('temperature' in (generateText as jest.Mock).mock.calls[0][0]).toBe(false);
+  });
+
+  it('passes a configured temperature through unchanged', async () => {
+    await run({ temperature: 0.2 });
+    expect((generateText as jest.Mock).mock.calls[0][0].temperature).toBe(0.2);
+  });
+
+  it('passes temperature 0 (falsy but set)', async () => {
+    await run({ temperature: 0 });
+    expect((generateText as jest.Mock).mock.calls[0][0].temperature).toBe(0);
+  });
+
+  describe('streaming', () => {
+    async function streamCallArgs(config: Record<string, unknown>) {
+      (streamText as jest.Mock).mockReset().mockImplementation((args) => {
+        args.onFinish({ text: '', usage: {}, finishReason: 'stop', steps: [] });
+        return { toUIMessageStreamResponse: () => ({ headers: new Headers(), body: null }) };
+      });
+      const context = createContext({ prep: { prompt: 'hi' } });
+      (context.request as any).res = { write: jest.fn(), setHeader: jest.fn(), end: jest.fn() };
+      const result = await createHandler().handler.execute(
+        context,
+        completionStep({ messageField: 'steps.prep.prompt', responseMode: 'stream', ...config }),
+      );
+      expect(result.success).toBe(true);
+      return (streamText as jest.Mock).mock.calls[0][0];
+    }
+
+    it('omits temperature from streamText when unset', async () => {
+      expect('temperature' in (await streamCallArgs({}))).toBe(false);
+    });
+
+    it('passes a configured temperature to streamText', async () => {
+      expect((await streamCallArgs({ temperature: 1.1 })).temperature).toBe(1.1);
+    });
   });
 });

@@ -456,7 +456,9 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     }
 
     const maxTokens = config.maxTokens ?? 4096;
-    const temperature = config.temperature ?? 0.7;
+    // Only send temperature when the step sets one: some models (e.g. Claude 5.5)
+    // reject the parameter outright, so the provider default must apply otherwise.
+    const temperature = config.temperature;
 
     // Extract the last user message content for persistence. With
     // attachments the content is a parts array — persist only its text part.
@@ -510,7 +512,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     model: LanguageModel,
     messages: ModelMessage[],
     maxTokens: number,
-    temperature: number,
+    temperature: number | undefined,
     userContent: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools?: Record<string, any>,
@@ -561,7 +563,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       model,
       messages,
       maxOutputTokens: maxTokens,
-      temperature,
+      ...(temperature !== undefined ? { temperature } : {}),
       tools,
       // Enable multi-step execution when tools are available
       // Default is stepCountIs(1), increase to allow tool calls
@@ -674,7 +676,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     model: LanguageModel,
     messages: ModelMessage[],
     maxTokens: number,
-    temperature: number,
+    temperature: number | undefined,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools?: Record<string, any>,
   ): Promise<StepResult> {
@@ -689,7 +691,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       model,
       messages,
       maxOutputTokens: maxTokens,
-      temperature,
+      ...(temperature !== undefined ? { temperature } : {}),
       tools,
       // Enable tool calling when tools are available
       toolChoice: hasTools ? 'auto' : undefined,
