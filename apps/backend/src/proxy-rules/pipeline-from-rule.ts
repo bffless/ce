@@ -41,8 +41,28 @@ export function pipelineFromRule(
   };
 }
 
-/** The HTTP status a failed pipeline answers with, by its error code — the edge's table. */
-export function statusForPipelineError(code: string | undefined): number {
+/**
+ * Conventional status words a handler can use to choose the HTTP status of a
+ * failure it raises. A `function_handler` signals one by throwing an error whose
+ * message starts with `<WORD>:` (e.g. `throw new Error('BAD_REQUEST: missing kind')`);
+ * a handler that reports `error.code` equal to a word is honored too.
+ */
+export const THROWN_ERROR_STATUS: Readonly<Record<string, number>> = {
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  TOO_MANY_REQUESTS: 429,
+};
+
+/**
+ * The HTTP status a failed pipeline answers with — the edge's table. Codes the
+ * pipeline engine itself emits map first; otherwise a conventional status word
+ * (`THROWN_ERROR_STATUS`) as the error code or as the `WORD:` prefix of the
+ * message chooses the status. Anything else is 500.
+ */
+export function statusForPipelineError(code: string | undefined, message?: string): number {
   switch (code) {
     case 'VALIDATION_ERROR':
       return 400;
@@ -52,9 +72,13 @@ export function statusForPipelineError(code: string | undefined): number {
       return 403;
     case 'RATE_LIMIT_EXCEEDED':
       return 429;
-    default:
-      return 500;
   }
+  if (code && Object.prototype.hasOwnProperty.call(THROWN_ERROR_STATUS, code))
+    return THROWN_ERROR_STATUS[code];
+  const prefix = typeof message === 'string' ? /^([A-Z_]+):/.exec(message.trimStart()) : null;
+  if (prefix && Object.prototype.hasOwnProperty.call(THROWN_ERROR_STATUS, prefix[1]))
+    return THROWN_ERROR_STATUS[prefix[1]];
+  return 500;
 }
 
 /**

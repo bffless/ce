@@ -1253,7 +1253,7 @@ export class ProxyMiddleware implements NestMiddleware {
       } else {
         // Pipeline failed - map error codes to appropriate HTTP status codes
         // (pipeline-from-rule.ts, shared with the in-process invoker)
-        const statusCode = statusForPipelineError(result.error?.code);
+        const statusCode = statusForPipelineError(result.error?.code, result.error?.message);
         if (statusCode === 401) this.setResourceMetadataHint(req, res);
         // RFC 6750 §3.1: a token that lacks the rule's scope is told which one.
         const scopeHeader = insufficientScopeHeader(result.error);

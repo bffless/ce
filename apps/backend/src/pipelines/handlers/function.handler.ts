@@ -17,6 +17,15 @@ import { FunctionRunnerService } from '../function-runner.service';
  * - No access to Node.js APIs (require, process, etc.)
  * - Timeout enforcement
  * - Static code validation for prohibited patterns
+ *
+ * Choosing the HTTP status of a failure: the sandbox only carries a thrown
+ * error's `message` out (custom properties such as `status` are dropped), so a
+ * handler picks the status with a conventional prefix on the message:
+ * `throw new Error('BAD_REQUEST: missing kind')`. Recognised words:
+ * BAD_REQUEST (400), UNAUTHORIZED (401), FORBIDDEN (403), NOT_FOUND (404),
+ * CONFLICT (409), TOO_MANY_REQUESTS (429). Any other error stays 500. The
+ * response body is unchanged (`error.message` keeps the full text). See
+ * `statusForPipelineError` in proxy-rules/pipeline-from-rule.ts.
  */
 @Injectable()
 export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
