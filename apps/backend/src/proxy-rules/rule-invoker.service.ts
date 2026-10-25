@@ -201,7 +201,7 @@ export class RuleInvokerService {
         },
       };
     }
-    const status = statusForPipelineError(result.error?.code);
+    const status = statusForPipelineError(result.error?.code, result.error?.message);
     const headers: Record<string, string> = {};
     const scope = insufficientScopeHeader(result.error);
     if (scope) headers['WWW-Authenticate'] = scope;
