@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.68](https://github.com/bffless/ce/compare/v0.4.67...v0.4.68) (2026-10-25)
+
+
+### Fixed
+
+* **pipelines:** let a thrown handler error choose the HTTP status ([#830](https://github.com/bffless/ce/issues/830)) ([8a72871](https://github.com/bffless/ce/commit/8a72871ce0a4f61f047c99ebdbe71cf412f73975))
+* **pipelines:** only send temperature to the AI provider when configured ([#829](https://github.com/bffless/ce/issues/829)) ([fa759e3](https://github.com/bffless/ce/commit/fa759e3016d386807b0ad7e95a409a37a54eb98a))
+
 ## [0.4.67](https://github.com/bffless/ce/compare/v0.4.66...v0.4.67) (2026-10-23)
 
 ### Fixed
