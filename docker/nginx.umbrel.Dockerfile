@@ -4,7 +4,7 @@
 # - Setup wizard page shown on internal access (umbrel.local)
 # - Entrypoint that processes config template and watches for reloads
 
-FROM nginx:1.27-alpine
+FROM nginx:alpine
 
 # Install inotify-tools for config watching
 RUN apk add --no-cache inotify-tools

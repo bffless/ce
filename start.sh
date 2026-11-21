@@ -198,7 +198,7 @@ fi
 
 # Build nginx (it's built locally, not pulled from registry)
 echo "Building nginx image..."
-docker compose build nginx
+docker compose build --pull nginx
 
 # Start Docker Compose
 echo ""
