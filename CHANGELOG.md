@@ -5,12 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.69](https://github.com/bffless/ce/compare/v0.4.68...v0.4.69) (2026-11-21)
-
+## [0.4.69](https://github.com/bffless/ce/compare/v0.4.68...v0.4.69) (2026-11-23)
 
 ### Fixed
-
-* pull fresh nginx base image on build and unpin Umbrel nginx from EOL 1.27 ([#834](https://github.com/bffless/ce/issues/834)) ([ce12e2f](https://github.com/bffless/ce/commit/ce12e2fcf654a75233374709a670e07a20190077))
+- Pull fresh nginx base image on build and unpin Umbrel nginx from EOL 1.27 ([#834](https://github.com/bffless/ce/pull/834), thanks @toshimoto821)
 
 ## [0.4.68](https://github.com/bffless/ce/compare/v0.4.67...v0.4.68) (2026-10-25)
 
